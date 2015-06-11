@@ -1,0 +1,17 @@
+[package]
+name = "rwdraw"
+version = "0.1.0"
+authors = ["Denilson M. Amorim <dma_2012@hotmail.com>"]
+
+[dependencies]
+byteorder = "*"
+bitflags = "*"
+itertools = "0.3"
+cgmath = "*"
+clock_ticks = "*"
+
+[dependencies.glium]
+path = "C:/Projects/forks/glium"
+# version = "*"
+features = ["cgmath"]
+default-features = true
