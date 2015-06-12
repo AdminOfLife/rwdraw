@@ -1,5 +1,5 @@
 use byteorder::{ReadBytesExt, LittleEndian};
-use super::{Section, Struct, Result, Error, ReadExt};
+use super::{Section, Struct, Result, Error, ReadExt, Stream};
 
 use super::{Extension, Vec3, Uv, Sphere, Rgba};
 use super::{Material, MaterialList};
@@ -19,6 +19,8 @@ pub struct MeshHeader {
 	pub meshes: Vec<Mesh>,
 }
 
+// `Face`s are necessary only to calculate `Mesh`es, though those meshes are mostly like already
+// precalculated inside our model files (dff).
 #[derive(Debug, Copy, Clone)]
 pub struct Face {
 	pub y_id: u16,
@@ -62,7 +64,7 @@ impl Section for MeshHeader {
 }
 
 impl GeometryList {
-	pub fn read<R: ReadExt>(rws: &mut R) -> Result<GeometryList> {
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<GeometryList> {
 		let _header = try!(Self::read_header(rws));
 		let numgeo = try!(Struct::read_up(rws, |rws| { Ok(try!(rws.read_u32::<LittleEndian>())) }));
 		
@@ -76,7 +78,7 @@ impl GeometryList {
 }
 
 impl Geometry {
-	pub fn read<R: ReadExt>(rws: &mut R) -> Result<Geometry> {
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Geometry> {
 		let header = try!(Self::read_header(rws));
 
 		// the struct section is pretty hunge in the geometry, maybe we should put it in another
@@ -202,7 +204,7 @@ impl Geometry {
 }
 
 impl MeshHeader {
-	pub fn read<R: ReadExt>(rws: &mut R, matlist: &MaterialList) -> Result<MeshHeader> {
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>, matlist: &MaterialList) -> Result<MeshHeader> {
 		let _header = try!(Self::read_header(rws));
 
 		let flags = try!(rws.read_u32::<LittleEndian>());
@@ -218,7 +220,7 @@ impl MeshHeader {
 }
 
 impl Mesh {
-	pub fn read<R: ReadBytesExt>(rws: &mut R, matlist: &MaterialList) -> Result<Mesh> {
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>, matlist: &MaterialList) -> Result<Mesh> {
 		let nidx = try!(rws.read_u32::<LittleEndian>()) as usize;
 		let matid = try!(rws.read_u32::<LittleEndian>()) as usize;
 		Ok(Mesh {

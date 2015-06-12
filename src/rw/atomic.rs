@@ -1,5 +1,5 @@
 use byteorder::{ReadBytesExt, LittleEndian};
-use super::{Section, Struct, Result, Error, ReadExt};
+use super::{Section, Struct, Result, Error, ReadExt, Stream};
 
 use super::{Extension};
 use super::{FrameList, GeometryList, Geometry};
@@ -28,7 +28,7 @@ impl Section for Atomic {
 }
 
 impl Atomic {
-	pub fn read<R: ReadExt>(rws: &mut R, _framelist: &FrameList,
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>, _framelist: &FrameList,
 		                    geolist: &GeometryList) -> Result<Atomic> {
 
 		let _header = try!(Self::read_header(rws));

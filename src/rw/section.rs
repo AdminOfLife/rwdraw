@@ -1,4 +1,4 @@
-use super::{Result, Error, ReadExt, Header, Section, SectionBuf};
+use super::{Result, Error, ReadExt, Stream, Header, Section, SectionBuf};
 
 use std::io::{Seek, SeekFrom};
 use std::any::Any;
@@ -22,8 +22,8 @@ impl Section for Extension {
 }
 
 impl Struct {
-    pub fn read_up<R: ReadExt, T, F>(rws: &mut R, f: F) -> Result<T>
-                                    where F: FnOnce(&mut R) -> Result<T> {
+    pub fn read_up<R: ReadExt, T, F>(rws: &mut Stream<R>, f: F) -> Result<T>
+                                    where F: FnOnce(&mut Stream<R>) -> Result<T> {
         let _header = try!(Self::read_header(rws));
         f(rws)
         // TODO check if f() readed too much
@@ -31,8 +31,8 @@ impl Struct {
 }
 
 impl Extension {
-    pub fn read_up<R: ReadExt, F>(rws: &mut R, f: F) -> Result<Vec<Box<Any>>>
-                                    where F: Fn(&mut R, Header) -> Result<Option<Box<Any>>> {
+    pub fn read_up<R: ReadExt, F>(rws: &mut Stream<R>, f: F) -> Result<Vec<Box<Any>>>
+                                    where F: Fn(&mut Stream<R>, Header) -> Result<Option<Box<Any>>> {
         let header = try!(Self::read_header(rws));
         if header.size > 0 {
             let endoff = (header.size as u64) + try!(rws.seek(SeekFrom::Current(0)));
@@ -52,8 +52,8 @@ impl Extension {
         }
     }
 
-    pub fn read_for<R: ReadExt, T: Any + Section, F>(rws: &mut R, f: F) -> Result<Option<T>>
-                                        where F: Fn(&mut R) -> Result<T> {
+    pub fn read_for<R: ReadExt, T: Any + Section, F>(rws: &mut Stream<R>, f: F) -> Result<Option<T>>
+                                        where F: Fn(&mut Stream<R>) -> Result<T> {
         let boxes = try!(Extension::read_up(rws, |rws, header| {
             if header.id == T::section_id() {
                 f(rws).map(|val| Some(Box::new(val) as Box<Any>))
@@ -69,11 +69,12 @@ impl Extension {
 }
 
 pub trait StringExt : Section {
-    fn read<R: ReadExt>(rws: &mut R) -> Result<Self>;
+    fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Self>;
 }
 
 impl StringExt for String {
-    fn read<R: ReadExt>(rws: &mut R) -> Result<Self> {
+    fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Self> {
+        // XXX perhaps optimize for '\0\0\0\0' strings to avoid unecessary allocs.
         let header = try!(SectionBuf::read_header_id(rws, Self::section_id()));
         rws.read_bytes(header.size as usize).and_then(|mut vec| {
             match vec.iter().find(|&&c| c == 0) {

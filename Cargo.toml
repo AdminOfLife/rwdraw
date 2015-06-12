@@ -9,9 +9,9 @@ bitflags = "*"
 itertools = "0.3"
 cgmath = "*"
 clock_ticks = "*"
+image = "*"
 
 [dependencies.glium]
-path = "C:/Projects/forks/glium"
-# version = "*"
+version = "*"
 features = ["cgmath"]
 default-features = true

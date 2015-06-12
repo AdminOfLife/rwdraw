@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use byteorder::{self, ReadBytesExt, LittleEndian};
 use std::io::{self, Read, Seek, SeekFrom};
+use std::rc::Rc;
+use std::collections::HashMap;
 
 // TODO replace all the occ to ok_or to something more performancy because of string creation
 
@@ -18,7 +20,8 @@ pub mod geometry;
 pub use self::geometry::{GeometryList, Geometry};
 pub mod material;
 pub use self::material::{MaterialList, Material, SurfaceProperties};
-
+pub mod texture;
+pub use self::texture::{Texture};
 
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -29,7 +32,7 @@ pub enum Error {
 	ExpectedSection { expect: u32, found: u32 },
 	MissingSection(u32),
 	IoError(byteorder::Error),
-	Other(String),
+	Other(String), // TODO Find all calls to this (ok_or) and optimize to be lazy to avoid alloc
 }
 
 impl From<byteorder::Error> for Error {
@@ -63,21 +66,21 @@ pub struct SectionBuf {
 pub trait Section {
 	fn section_id() -> u32;
 
-	fn read_header<R: ReadExt>(rws: &mut R) -> Result<Header> {
+	fn read_header<R: ReadExt>(rws: &mut Stream<R>) -> Result<Header> {
 		SectionBuf::read_header_id(rws, Self::section_id())
 	}
 
-	fn skip_section<R: ReadExt>(rws: &mut R) -> Result<u64> {
+	fn skip_section<R: ReadExt>(rws: &mut Stream<R>) -> Result<u64> {
 		SectionBuf::skip_section_id(rws, Self::section_id())
 	}
 
-	fn find_chunk<R: ReadExt>(rws: &mut R) -> Result<Header> {
+	fn find_chunk<R: ReadExt>(rws: &mut Stream<R>) -> Result<Header> {
 		SectionBuf::find_chunk_id(rws, Self::section_id())
 	}
 }
 
 impl SectionBuf {
-	pub fn read<R: ReadExt>(rws: &mut R) -> Result<SectionBuf> {
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<SectionBuf> {
 		let header = try!(SectionBuf::read_header(rws));
 		let size = header.size as usize;
 		Ok(SectionBuf {
@@ -86,7 +89,7 @@ impl SectionBuf {
 		})
 	}
 
-	pub fn read_section_id<R: ReadExt>(rws: &mut R, id: u32) -> Result<SectionBuf> {
+	pub fn read_section_id<R: ReadExt>(rws: &mut Stream<R>, id: u32) -> Result<SectionBuf> {
 		let header = try!(SectionBuf::read_header_id(rws, id));
 		let size = header.size as usize;
 		Ok(SectionBuf {
@@ -95,7 +98,7 @@ impl SectionBuf {
 		})
 	}
 
-	fn read_header<R: ReadExt>(rws: &mut R) -> Result<Header> {
+	fn read_header<R: ReadExt>(rws: &mut Stream<R>) -> Result<Header> {
 		Ok(Header {
 			id: try!(rws.read_u32::<LittleEndian>()),
 			size: try!(rws.read_u32::<LittleEndian>()),
@@ -103,7 +106,7 @@ impl SectionBuf {
 		})
 	}
 
-	fn read_header_id<R: ReadExt>(rws: &mut R, id: u32) -> Result<Header> {
+	fn read_header_id<R: ReadExt>(rws: &mut Stream<R>, id: u32) -> Result<Header> {
 		match SectionBuf::read_header(rws) {
 			Ok(header) if header.id != id => {
 				Err(Error::ExpectedSection { expect: id, found: header.id })
@@ -113,7 +116,7 @@ impl SectionBuf {
 		}
 	}
 
-	fn find_chunk_id<R: ReadExt>(rws: &mut R, id: u32) -> Result<Header> {
+	fn find_chunk_id<R: ReadExt>(rws: &mut Stream<R>, id: u32) -> Result<Header> {
 		loop {
 			match SectionBuf::read_header(rws).map_err(|_| Error::MissingSection(id)) {
 				Ok(header) if header.id == 0 => {	// end of stream virtually
@@ -132,13 +135,13 @@ impl SectionBuf {
 		}
 	}
 
-	fn skip_section<R: ReadExt>(rws: &mut R) -> Result<u64> {
+	fn skip_section<R: ReadExt>(rws: &mut Stream<R>) -> Result<u64> {
 		let header = try!(SectionBuf::read_header(rws));
 		try!(rws.seek(SeekFrom::Current(header.size as i64)));
 		Ok(0xC + header.size as u64)
 	}
 
-	fn skip_section_id<R: ReadExt>(rws: &mut R, id: u32) -> Result<u64> {
+	fn skip_section_id<R: ReadExt>(rws: &mut Stream<R>, id: u32) -> Result<u64> {
 		let header = try!(SectionBuf::read_header_id(rws, id));
 		try!(rws.seek(SeekFrom::Current(header.size as i64)));
 		Ok(0xC + header.size as u64)
@@ -146,7 +149,62 @@ impl SectionBuf {
 }
 
 
+pub struct Instance {
+	textures: HashMap<String, Rc<Texture>>,
+	curr_dict: String,	// binded dictionary
+}
 
+impl Instance {
+	pub fn new() -> Instance {
+		Instance {
+			textures: HashMap::new(),
+			curr_dict: String::new(),
+		}
+	}
+
+	pub fn read_texture(&self, name: &str, mask: Option<&str>) -> Option<Rc<Texture>> {
+		// TODO STUB
+		Some(Rc::new(Texture))
+	}
+}
+
+pub struct Stream<'a, R> where R: ReadExt {
+	inner: R,
+	rw: &'a mut Instance,
+}
+
+impl<'a, R: ReadExt> Stream<'a, R> {
+	pub fn new(inner: R, rw: &'a mut Instance) -> Stream<'a, R> {
+		Stream {
+			inner: inner,
+			rw: rw,
+		}
+	}
+
+	pub fn into_inner(self) -> R {
+		self.inner
+	}
+}
+
+impl<'a, R: ReadExt> io::Read for Stream<'a, R> {
+	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+		self.inner.read(buf)
+	}
+}
+
+impl<'a, R: ReadExt + io::BufRead> io::BufRead for Stream<'a, R> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+    	self.inner.fill_buf()
+    }
+    fn consume(&mut self, amt: usize) {
+    	self.inner.consume(amt)
+    }
+}
+impl<'a, R: ReadExt> io::Seek for Stream<'a, R> {
+	fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+		self.inner.seek(pos)
+	}
+}
 
 pub trait ReadExt : Seek + byteorder::ReadBytesExt {
 	fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>> {

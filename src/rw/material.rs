@@ -1,14 +1,10 @@
 use byteorder::{ReadBytesExt, LittleEndian};
-use super::{Section, Struct, Result, ReadExt};
+use super::{Section, Struct, Result, ReadExt, Stream};
 
-use super::{SectionBuf, Extension, Rgba};
+use super::{Texture, SectionBuf, Extension, Rgba};
 use super::Error;
 
 use std::rc::Rc;
-
-// STUB!!!!!!!!! MOVE TO texture.rs
-#[derive(Debug)]
-pub struct Texture;
 
 #[derive(Debug, Copy, Clone)]
 pub struct SurfaceProperties {
@@ -19,7 +15,7 @@ pub struct SurfaceProperties {
 
 #[derive(Debug)]
 pub struct Material {
-    texture: Option<Texture>,
+    texture: Option<Rc<Texture>>,
     color: Rgba,
     surf: SurfaceProperties,
 }
@@ -36,7 +32,7 @@ impl Section for Material {
 }
 
 impl SurfaceProperties {
-    pub fn read<R: ReadBytesExt>(rws: &mut R) -> Result<SurfaceProperties> {
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<SurfaceProperties> {
         Ok(SurfaceProperties {
             ambient: try!(rws.read_f32::<LittleEndian>()),
             specular: try!(rws.read_f32::<LittleEndian>()),
@@ -46,7 +42,7 @@ impl SurfaceProperties {
 }
 
 impl MaterialList {
-    pub fn read<R: ReadExt>(rws: &mut R) -> Result<MaterialList> {
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<MaterialList> {
         let _header = try!(Self::read_header(rws));
 
         let mats_id: Vec<i32> = try!(Struct::read_up(rws, |rws| {
@@ -69,7 +65,7 @@ impl MaterialList {
 }
 
 impl Material {
-    pub fn read<R: ReadExt>(rws: &mut R) -> Result<Material> {
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Material> {
         let _header = try!(Self::read_header(rws));
 
         let (_, color, _, has_tex, surf) = try!(Struct::read_up(rws, |rws| {

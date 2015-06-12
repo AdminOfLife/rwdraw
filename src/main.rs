@@ -1,3 +1,7 @@
+
+// TODO there are lots of unwraps because of testing, get rid of those and add proper error
+// handling
+
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
@@ -7,93 +11,149 @@ extern crate itertools;
 extern crate byteorder;
 extern crate cgmath;
 extern crate clock_ticks;
+extern crate image;
 
 mod rw;
 
+mod user;
+use user::{UserCamera, UserControl};
+
 use std::fs::File;
 use std::io::BufReader;
-
 use std::ops::Range;
 
-use cgmath::{Vector2, Vector3, Matrix4};
+use glium::{Surface, DisplayBuild};
+use glium::vertex::{VertexBuffer};
+use glium::index::{IndexBuffer, PrimitiveType};
+use glium::glutin::{self, Event};
+use glium::draw_parameters::DepthTest;
+use glium::backend::Facade;
 
-use glium::Surface;
-use glium::VertexBuffer;
-use glium::index::{IndexBuffer, IndexBufferSlice};
-use glium::index::PrimitiveType;
-use glium::backend::glutin_backend::GlutinFacade;
+use cgmath::{Deg, Point3, PerspectiveFov, Matrix4, Vector2, Vector4};
+
+
+
 
 #[derive(Debug, Copy, Clone)]
-struct Vertex {
-    pos: Vector3<f32>,
-    normal: Vector3<f32>,
+struct VertexPrelit {
+    pos: Point3<f32>,
+    color: Vector4<f32>,
     uv0: Vector2<f32>,
 }
 
-implement_vertex!(Vertex, pos, normal, uv0);
+implement_vertex!(VertexPrelit, pos, color, uv0);
 
 #[derive(Debug)]
-struct MyMesh {
+enum NativeVertexBuffer {
+    Prelit(VertexBuffer<VertexPrelit>),
+}
+
+impl<'a> glium::vertex::IntoVerticesSource<'a> for &'a NativeVertexBuffer {
+    fn into_vertices_source(self) -> glium::vertex::VerticesSource<'a> {
+        use NativeVertexBuffer::*;
+        match *self {
+            Prelit(ref vbo) => vbo.into_vertices_source(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct NativeMesh {
     range: Range<usize>,
 }
 
 #[derive(Debug)]
-struct MyGeometry {
-    vbo: VertexBuffer<Vertex>,
+struct NativeGeometry {
+    vbo: NativeVertexBuffer,
     ibo: IndexBuffer<u16>,
-    meshes: Vec<MyMesh>,
+    meshes: Vec<NativeMesh>,
 }
 
-fn build_geometry(facade: &GlutinFacade, rwgeo: &rw::Geometry) -> Option<MyGeometry> {
-    // TODO do proper bounding checks
-    // TODO check if size of uv0 == size of normals == size of verts
-    // TODO other stuff other than TriStrip
+impl NativeGeometry {
 
-    use std::mem::replace;
+    fn from_rw<F: Facade>(rwgeo: &rw::Geometry, facade: &F) -> Option<NativeGeometry> {
+        use NativeVertexBuffer::*;
+        
+        struct RwData<'a> {
+            verts: Option<&'a Vec<rw::Vec3>>,
+            normals: Option<&'a Vec<rw::Vec3>>,
+            colors: Option<&'a Vec<rw::Rgba>>,
+            uv0: Option<&'a Vec<rw::Uv>>,
+        }
 
-    let target0 = rwgeo.targets.get(0).unwrap();
+        // Gather all the information we need to pattern match this RwGeometry and build the
+        // correct Vertex Buffer Object.
+        let rwdata = {
+            RwData {
+                // ignore any morph target that is not the first one because gta uses only that.
+                verts: rwgeo.targets.get(0).and_then(|target| target.verts.as_ref()),
+                normals: rwgeo.targets.get(0).and_then(|target| target.normals.as_ref()),
+                colors: rwgeo.colors.as_ref(),
+                uv0: rwgeo.uv_sets.get(0),
+            }
+        };
 
-    let vbo = match (target0.verts.as_ref(), target0.normals.as_ref(), rwgeo.uv_sets.get(0).as_ref()) {
-        (Some(verts), Some(normals), Some(uv0)) => {
-            VertexBuffer::new(facade, izip!(verts.iter(), normals.iter(), uv0.iter())
-                .map(|(vert, normal, uv0): (&rw::Vec3, &rw::Vec3, &rw::Uv)|
-                    Vertex {
-                        pos: Vector3::new(vert.0, vert.1, vert.2),
-                        normal: Vector3::new(normal.0, normal.1, normal.2),
-                        uv0: Vector2::new(uv0.0, uv0.1),
-                }).collect::<Vec<Vertex>>())
-        },
-        _ => unimplemented!(),
-    };
+        // Build the vertex buffer specific for this type of model, we gonna do this by pattern
+        // matching the data we previosly built. 
+        let vertex_buffer = match rwdata {
+            // In case it's a prelit geometry...
+            RwData { verts: Some(verts), normals: _, colors: Some(colors), uv0: Some(uv0) } => {
 
-    let mut indices = Vec::with_capacity(rwgeo.meshlist.total_indices as usize);
+                // Maybe make this a pattern guard?
+                if verts.len() != colors.len() || colors.len() != uv0.len() {
+                    return None;
+                }
 
-    let meshes = {
-        rwgeo.meshlist.meshes.iter().scan(0, |curr, rwmesh| {
-            let start = *curr;
-            *curr = *curr + rwmesh.indices.len();
-            indices.extend(rwmesh.indices.iter().cloned());
-            Some(Range {
-                start: start,
-                end: start + rwmesh.indices.len(),
-            })
-        }).map(|range| MyMesh { range: range} ).collect()
-    };
+                NativeVertexBuffer::Prelit(
+                    VertexBuffer::new(
+                        facade,
+                        izip!(verts.iter(), colors.iter(), uv0.iter()).map(|(vert, rgba, uv0)| {
+                            VertexPrelit {
+                                pos: (*vert).into(),
+                                color: (*rgba).into(), // auto converts between 0-255 to 0-1 range
+                                uv0: (*uv0).into(),
+                            }
+                        }).collect::<Vec<_>>()
+                    )
+                )
+            },
+            // Not sure what we're dealing with:
+            _ => return None,
+        };
 
-    let ibo = IndexBuffer::new(facade, PrimitiveType::TriangleStrip, &indices);
+        // Builds the index buffer and meshes, a mesh basically consists of a range of indices in
+        // the index buffer to be used to render a slice of the geometry.
+        let (indices, meshes) = {
+            let mut current_index = 0;
+            let mut indices = Vec::with_capacity(rwgeo.meshlist.total_indices as usize);
+            let mut meshes = Vec::with_capacity(rwgeo.meshlist.meshes.len());
 
-    Some(MyGeometry {
-        vbo: vbo,
-        ibo: ibo,
-        meshes: meshes,
-    })
+            for rwmesh in rwgeo.meshlist.meshes.iter() {
+                let start = current_index;  // beggining of current mesh
+                current_index += rwmesh.indices.len();
+                indices.extend(rwmesh.indices.iter().cloned());
+                meshes.push(NativeMesh {
+                    range: Range { start: start, end: current_index },
+                });
+            }
+
+            (indices, meshes)
+        };
+
+        // TODO other formats other than TriStrip, check RwGeometry flags
+        let index_buffer = IndexBuffer::new(facade, PrimitiveType::TriangleStrip, &indices);
+
+        Some(NativeGeometry {
+            vbo: vertex_buffer,
+            ibo: index_buffer,
+            meshes: meshes,
+        })
+    }
 }
 
 fn main() {
-    use glium::DisplayBuild;
-    use cgmath::{Point, Vector, Deg, Point2, Point3, PerspectiveFov, Matrix4};
-    use std::collections::HashMap;
-    use glium::glutin::{self, Event, ElementState, VirtualKeyCode, MouseButton};
+    use std::ops::Deref;
+    use std::io::Read;
 
     let x_res = 800.0f32;
     let y_res = 600.0f32;
@@ -104,128 +164,79 @@ fn main() {
                             .with_dimensions(x_res as u32, y_res as u32)
                             .build_glium().unwrap();
 
+    let mut user = match display.get_window() {
+        Some(window) => UserControl::new(Some(window.deref()), (x_res as i32, y_res as i32)),
+        None => UserControl::new(None, (x_res as i32, y_res as i32)),
+    };
+
     let mut curr_frame_time: f64 = clock_ticks::precise_time_s();
-    let mut last_frame_time: f64 = curr_frame_time;
+    let mut last_frame_time: f64;
 
     // TODO less unwrap
-    let mut f = BufReader::new(File::open(/*"newbuildsm01.dff"*/"box.dff").unwrap());
-    let clump = rw::Clump::read(&mut f).unwrap();
+    let mut rw = rw::Instance::new();
+    let f = BufReader::new(File::open("target/barrel4.dff").unwrap());
+    let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
     let atomic = clump.into_atomic().unwrap();
-    let xg = build_geometry(&display, &atomic.geometry).unwrap();
+    let ximage = image::load(BufReader::new(File::open("target/redallu.png").unwrap()), image::PNG).unwrap();
+    let texture = glium::texture::Texture2d::new(&display, ximage);
+    let xg = NativeGeometry::from_rw(&atomic.geometry, &display).unwrap();
     println!("{:?}", xg);
 
-    let vertex_shader_src = r#"
-        #version 140
+    let mut vertex_shader_src = String::with_capacity(512);
+    BufReader::new(
+        File::open(r"src/shader/gta3_prelit_tex1.vs.glsl").unwrap()
+    ).read_to_string(&mut vertex_shader_src).unwrap();
 
-        in vec3 pos;
+    let mut fragment_shader_src = String::with_capacity(512);
+    BufReader::new(
+        File::open(r"src/shader/gta3_prelit_tex1.fs.glsl").unwrap()
+    ).read_to_string(&mut fragment_shader_src).unwrap();
 
-        uniform mat4 modelViewProj;
+    let program = glium::Program::from_source(&display, 
+                                              &vertex_shader_src,
+                                              &fragment_shader_src,
+                                              None).unwrap();
 
-        void main() {
-            gl_Position = modelViewProj * vec4(pos.x, pos.z, pos.y, 1.0);// + vec4(0.0, 0.0, 0.0, 0.0);
-        }
-    "#;
+    let mut camera = UserCamera::new();
 
-    let fragment_shader_src = r#"
-        #version 140
+    let proj: Matrix4<f32> = Matrix4::<f32>::from(PerspectiveFov {
+        fovy: Deg { s: 45.0 },
+        aspect: x_res / y_res,
+        near: 0.1,
+        far: 1000.0,
+    });
 
-        out vec4 color;
-
-        void main() {
-            color = vec4(1.0, 0.0, 0.0, 1.0);
-        }
-    "#;
-
-    let program = glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
-
-    let mut t = -0.5;
-
-    let mut keyboard = HashMap::with_capacity(256);
-
-    let mut mouse_pos = Vector2::new((x_res as i32) / 2, (y_res as i32) / 2);
-    display.get_window().unwrap().set_cursor_position(mouse_pos.x, mouse_pos.y);
-    // TODO FIX UNWRAP ABOVE ON DISPLAY GET WINDOW
-
-
-    // -2.190002 -0.52999985 points to the cube
-    let mut horizontal_angle = -2.190002f32;
-    let mut vertical_angle = -0.52999985f32;
-
-    let mut position = Point3::new(4.0, 3.0, 3.0);
-    let mouse_speed = 0.005f32;
     loop {
         last_frame_time = curr_frame_time;
         curr_frame_time = clock_ticks::precise_time_s();
         let delta_time  = (curr_frame_time - last_frame_time) as f32;
 
-        // TODO optimize cos sin calls here
-        let direction = Vector3::new(
-            vertical_angle.cos() * horizontal_angle.sin(), 
-            vertical_angle.sin(),
-            vertical_angle.cos() * horizontal_angle.cos()
-        );
-
-        let right = Vector3::new(
-            (horizontal_angle - 3.14 / 2.0).sin(), 
-            0.0,
-            (horizontal_angle - 3.14 / 2.0).cos()
-        );
-
-        let up = right.cross(&direction);
-
+        user.process(None);
         for event in display.poll_events() {
-            
+            user.process(Some(event.clone()));
             match event {
                 Event::Closed => return,
-                Event::MouseInput(state, MouseButton::Left) => {
-                },
-                Event::MouseMoved((x, y)) => {
-                    if let Some(&(_, ElementState::Pressed)) = keyboard.get(&VirtualKeyCode::Q) {
-                        horizontal_angle = horizontal_angle + mouse_speed * (mouse_pos.x - x) as f32;
-                        vertical_angle = vertical_angle + mouse_speed * (mouse_pos.y - y) as f32;
-                    }
-                    mouse_pos.x = x;
-                    mouse_pos.y = y;
-                },
-                Event::KeyboardInput(state, _, Some(vkey)) => {
-                    let just_changed = keyboard.remove(&vkey)
-                                               .map(|(_, oldstate)| oldstate == state)
-                                               .unwrap_or(true);
-                    keyboard.insert(vkey, (just_changed, state));
-                },
-                _ => ()
+                _ => (),
             }
         }
 
-        if let Some(&(_, ElementState::Pressed)) = keyboard.get(&VirtualKeyCode::W) {
-            // TODO P+V and V*S in cgmath
-            position = position.add_v(&direction.mul_s(delta_time * 1.0f32));
-        }
-
-        let proj: Matrix4<f32> = Matrix4::<f32>::from(PerspectiveFov {
-            fovy: Deg { s: 45.0f32 },
-            aspect: 4.0f32 / 3.0f32,    // 4:3 FIXME any aspect ratio
-            near: 0.1f32,
-            far: 100.0f32,
-        });
-
-        // TODO add P+V in cgmath
-       let view: Matrix4<f32> = Matrix4::look_at(&position, 
-                                                 &(position.add_v(&direction)),
-                                                 &up);
-
-        let model: Matrix4<f32> = Matrix4::identity();
+        let view = camera.process_view_matrix(&user, delta_time);
+        let model = Matrix4::<f32>::identity();
 
         let uniforms = uniform! {
-            modelViewProj: proj * view * model,
+            model_view_proj: proj * view * model,
+            tex: &texture,
         };
 
-
         let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 1.0, 1.0);
+        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
         for mesh in xg.meshes.iter() {
-            target.draw(&xg.vbo, xg.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms,
-                        &Default::default()).unwrap();
+            let params = glium::DrawParameters {
+                depth_test: DepthTest::IfLess,
+                depth_write: true,
+                .. Default::default()
+            };
+            target.draw(&xg.vbo, xg.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
         }
         target.finish();
     }
