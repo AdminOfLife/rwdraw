@@ -76,16 +76,18 @@ impl Material {
                 try!(SurfaceProperties::read(rws))))
         }));
 
-        // TODO texture
-        if has_tex {
-            try!(SectionBuf::skip_section_id(rws, 0x0006));
-        }
+        // associated texture
+        let texture = if has_tex {
+            Some(try!(Texture::read(rws)))
+        } else {
+            None
+        };
 
         // extension
         try!(Extension::skip_section(rws));
 
         Ok(Material {
-            texture: None,
+            texture: texture,
             color: color,
             surf: surf,
         })

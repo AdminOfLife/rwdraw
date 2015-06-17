@@ -28,6 +28,14 @@ impl Struct {
         f(rws)
         // TODO check if f() readed too much
     }
+
+    pub fn peek_up<R: ReadExt, T, F>(rws: &mut Stream<R>, f: F) -> Result<T>
+                                    where F: FnOnce(&mut Stream<R>) -> Result<T> {
+        try!(rws.seek(SeekFrom::Current(0)).and_then(|pos| {
+            let result = Self::read_up(rws, f);
+            rws.seek(SeekFrom::Start(pos)).map(|_| result)
+        }))
+    }
 }
 
 impl Extension {
@@ -70,18 +78,22 @@ impl Extension {
 
 pub trait StringExt : Section {
     fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Self>;
+    fn from_null_terminated_buffer<V: Into<Vec<u8>>>(mut vec: V) -> Result<Self> ;
 }
 
 impl StringExt for String {
     fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Self> {
-        // XXX perhaps optimize for '\0\0\0\0' strings to avoid unecessary allocs.
+        // XXX perhaps optimize for '\0\0\0\0' strings to avoid unecessary alloc.
         let header = try!(SectionBuf::read_header_id(rws, Self::section_id()));
-        rws.read_bytes(header.size as usize).and_then(|mut vec| {
-            match vec.iter().find(|&&c| c == 0) {
-                Some(&endpos) => vec.truncate(endpos as usize),
-                None => {},
-            };
-            String::from_utf8(vec).map_err(|_| Error::Other("RwString is not valid UTF-8".into()))
-        })
+        rws.read_bytes(header.size as usize).and_then(|vec| Self::from_null_terminated_buffer(vec))
+    }
+
+    fn from_null_terminated_buffer<V: Into<Vec<u8>>>(vec: V) -> Result<Self> {
+        let mut vec = vec.into();
+        match vec.iter().position(|&c| c == 0) {
+            Some(endpos) => vec.truncate(endpos),
+            None => {},
+        };
+        String::from_utf8(vec).map_err(|_| Error::Other("RwString is not valid UTF-8".into()))
     }
 }

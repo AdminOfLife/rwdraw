@@ -9,9 +9,10 @@ bitflags = "*"
 itertools = "0.3"
 cgmath = "*"
 clock_ticks = "*"
-image = "*"
 
 [dependencies.glium]
-version = "*"
+# version = "*"
+# path = "../../forks/glium"
+git = "https://github.com/tomaka/glium"
 features = ["cgmath"]
 default-features = true

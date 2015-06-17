@@ -11,7 +11,6 @@ extern crate itertools;
 extern crate byteorder;
 extern crate cgmath;
 extern crate clock_ticks;
-extern crate image;
 
 mod rw;
 
@@ -25,6 +24,8 @@ use std::ops::Range;
 use glium::{Surface, DisplayBuild};
 use glium::vertex::{VertexBuffer};
 use glium::index::{IndexBuffer, PrimitiveType};
+use glium::texture::{CompressedSrgbTexture2d, TextureAny};
+use glium::uniforms::{AsUniformValue, UniformType, UniformValue};
 use glium::glutin::{self, Event};
 use glium::draw_parameters::DepthTest;
 use glium::backend::Facade;
@@ -71,7 +72,7 @@ struct NativeGeometry {
 
 impl NativeGeometry {
 
-    fn from_rw<F: Facade>(rwgeo: &rw::Geometry, facade: &F) -> Option<NativeGeometry> {
+    fn from_rw<F: Facade>(facade: &F, rwgeo: &rw::Geometry) -> Option<NativeGeometry> {
         use NativeVertexBuffer::*;
         
         struct RwData<'a> {
@@ -151,9 +152,43 @@ impl NativeGeometry {
     }
 }
 
+#[derive(Debug)]
+struct NativeTexture {
+    tex: CompressedSrgbTexture2d,
+}
+
+#[derive(Debug)]
+enum NativeTextureBuffer {
+    Compressed2d(CompressedSrgbTexture2d),
+}
+
+impl NativeTexture {
+    fn from_rw<F: Facade>(facade: &F, rwtex: &rw::Texture) -> Option<NativeTexture> {
+        // TODO if_supported for dxt
+        use rw::texture::TextureData;
+        use glium::texture::{CompressedSrgbTexture2d, CompressedSrgbFormat};
+
+        let tex = match rwtex.data {
+            TextureData::Dxt1c(ref data) => {
+                let tex = CompressedSrgbTexture2d::with_compressed_data(facade, data,
+                                                                        rwtex.width as u32, rwtex.height as u32,
+                                                                        CompressedSrgbFormat::S3tcDxt1NoAlpha);
+                tex
+            },
+            _ => unimplemented!(),
+        };
+
+        Some(NativeTexture {
+            tex: tex,
+        })
+    }
+}
+
 fn main() {
     use std::ops::Deref;
     use std::io::Read;
+    use glium::texture::{RawImage2d, CompressedTexture2d, CompressedFormat, ClientFormat};
+    use std::borrow::Cow;
 
     let x_res = 800.0f32;
     let y_res = 600.0f32;
@@ -174,13 +209,22 @@ fn main() {
 
     // TODO less unwrap
     let mut rw = rw::Instance::new();
-    let f = BufReader::new(File::open("target/barrel4.dff").unwrap());
-    let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
-    let atomic = clump.into_atomic().unwrap();
-    let ximage = image::load(BufReader::new(File::open("target/redallu.png").unwrap()), image::PNG).unwrap();
-    let texture = glium::texture::Texture2d::new(&display, ximage);
-    let xg = NativeGeometry::from_rw(&atomic.geometry, &display).unwrap();
-    println!("{:?}", xg);
+
+    let dictionary = {
+        let f = BufReader::new(File::open("target/dynbarrels.txd").unwrap());
+        rw::TexDictionary::read(&mut rw::Stream::new(f, &mut rw), "dynbarrels").unwrap()
+    };
+
+    let atomic = {
+        rw.bind_dictionary(&dictionary);
+        let f = BufReader::new(File::open("target/barrel4.dff").unwrap());
+        let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
+        clump.into_atomic().unwrap()
+    };
+
+    let natgeo = NativeGeometry::from_rw(&display, &atomic.geometry).unwrap();
+
+    let texture = NativeTexture::from_rw(&display, dictionary.read_texture("barrel_64HV", None).unwrap().as_ref()).unwrap();
 
     let mut vertex_shader_src = String::with_capacity(512);
     BufReader::new(
@@ -225,18 +269,18 @@ fn main() {
 
         let uniforms = uniform! {
             model_view_proj: proj * view * model,
-            tex: &texture,
+            tex: &texture.tex,
         };
 
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
-        for mesh in xg.meshes.iter() {
+        for mesh in natgeo.meshes.iter() {
             let params = glium::DrawParameters {
                 depth_test: DepthTest::IfLess,
                 depth_write: true,
                 .. Default::default()
             };
-            target.draw(&xg.vbo, xg.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
+            target.draw(&natgeo.vbo, natgeo.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
         }
         target.finish();
     }

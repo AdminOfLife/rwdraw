@@ -21,7 +21,7 @@ pub use self::geometry::{GeometryList, Geometry};
 pub mod material;
 pub use self::material::{MaterialList, Material, SurfaceProperties};
 pub mod texture;
-pub use self::texture::{Texture};
+pub use self::texture::{Texture, TexDictionary};
 
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -150,21 +150,29 @@ impl SectionBuf {
 
 
 pub struct Instance {
-	textures: HashMap<String, Rc<Texture>>,
-	curr_dict: String,	// binded dictionary
+	curr_dict: Option<Rc<TexDictionary>>,	// binded dictionary
 }
 
 impl Instance {
 	pub fn new() -> Instance {
 		Instance {
-			textures: HashMap::new(),
-			curr_dict: String::new(),
+			curr_dict: None,
 		}
 	}
 
+	pub fn bind_dictionary(&mut self, dictionary: &Rc<TexDictionary>) {
+		self.curr_dict = Some(dictionary.clone());
+	}
+
+	pub fn unbind_dictionary(&mut self) {
+		self.curr_dict = None;
+	}
+
 	pub fn read_texture(&self, name: &str, mask: Option<&str>) -> Option<Rc<Texture>> {
-		// TODO STUB
-		Some(Rc::new(Texture))
+		match self.curr_dict {
+			Some(ref dict) => dict.read_texture(name, mask),
+			None => None,
+		}
 	}
 }
 
