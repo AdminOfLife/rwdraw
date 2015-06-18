@@ -4,11 +4,12 @@ version = "0.1.0"
 authors = ["Denilson M. Amorim <dma_2012@hotmail.com>"]
 
 [dependencies]
-byteorder = "*"
-bitflags = "*"
+byteorder = "0.3"
+bitflags = "0.2"
 itertools = "0.3"
-cgmath = "*"
-clock_ticks = "*"
+cgmath = "0.2"
+clock_ticks = "0.0.6"
+rctree = "0.1"
 
 [dependencies.glium]
 # version = "*"

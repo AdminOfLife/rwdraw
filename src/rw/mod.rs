@@ -2,27 +2,26 @@
 use byteorder::{self, ReadBytesExt, LittleEndian};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::rc::Rc;
-use std::collections::HashMap;
 
 // TODO replace all the occ to ok_or to something more performancy because of string creation
 
-pub mod prims;
-pub use self::prims::{Rgba, Uv, Vec3, Sphere, Matrix};
-pub mod section;
-pub use self::section::{Struct, StringExt, Extension};
-pub mod clump;
-pub use self::clump::Clump;
-pub mod frame;
-pub use self::frame::FrameList;
-pub mod atomic;
-pub use self::atomic::Atomic;
-pub mod geometry;
-pub use self::geometry::{GeometryList, Geometry};
-pub mod material;
-pub use self::material::{MaterialList, Material, SurfaceProperties};
-pub mod texture;
-pub use self::texture::{Texture, TexDictionary};
+mod prims;
+mod section;
+mod clump;
+mod frame;
+mod atomic;
+mod geometry;
+mod material;
+mod texture;
 
+pub use self::prims::{Rgba, Uv, Vec3, Sphere, Matrix};
+pub use self::section::{Struct, StringExt, Extension};
+pub use self::clump::Clump;
+pub use self::frame::{FrameList, NodeNamePlg, FrameData, FrameRef};
+pub use self::atomic::Atomic;
+pub use self::geometry::{GeometryList, Geometry};
+pub use self::material::{MaterialList, Material, SurfaceProperties};
+pub use self::texture::{Texture, TexDictionary, TexNative, FilterMode, WrapMode, TextureData};
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 

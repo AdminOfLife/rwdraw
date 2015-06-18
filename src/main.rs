@@ -11,6 +11,7 @@ extern crate itertools;
 extern crate byteorder;
 extern crate cgmath;
 extern crate clock_ticks;
+extern crate rctree;
 
 mod rw;
 
@@ -24,8 +25,7 @@ use std::ops::Range;
 use glium::{Surface, DisplayBuild};
 use glium::vertex::{VertexBuffer};
 use glium::index::{IndexBuffer, PrimitiveType};
-use glium::texture::{CompressedSrgbTexture2d, TextureAny};
-use glium::uniforms::{AsUniformValue, UniformType, UniformValue};
+use glium::texture::{CompressedSrgbTexture2d};
 use glium::glutin::{self, Event};
 use glium::draw_parameters::DepthTest;
 use glium::backend::Facade;
@@ -165,7 +165,7 @@ enum NativeTextureBuffer {
 impl NativeTexture {
     fn from_rw<F: Facade>(facade: &F, rwtex: &rw::Texture) -> Option<NativeTexture> {
         // TODO if_supported for dxt
-        use rw::texture::TextureData;
+        use rw::TextureData;
         use glium::texture::{CompressedSrgbTexture2d, CompressedSrgbFormat};
 
         let tex = match rwtex.data {
@@ -187,8 +187,6 @@ impl NativeTexture {
 fn main() {
     use std::ops::Deref;
     use std::io::Read;
-    use glium::texture::{RawImage2d, CompressedTexture2d, CompressedFormat, ClientFormat};
-    use std::borrow::Cow;
 
     let x_res = 800.0f32;
     let y_res = 600.0f32;

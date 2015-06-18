@@ -2,12 +2,9 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use super::{Section, Struct, Result, Error, ReadExt, Stream};
 
 use super::{Extension};
-use super::{FrameList, GeometryList, Geometry};
+use super::{FrameList, FrameRef, GeometryList, Geometry};
 
 use std::rc::Rc;
-
-// TODO
-
 
 bitflags! {
 	flags AtomicFlags: u32 {
@@ -18,6 +15,7 @@ bitflags! {
 
 #[derive(Debug)]
 pub struct Atomic {
+	pub frame: Option<FrameRef>,
 	pub geometry: Rc<Geometry>,
 	pub flags: AtomicFlags,
 }
@@ -28,17 +26,21 @@ impl Section for Atomic {
 }
 
 impl Atomic {
-	pub fn read<R: ReadExt>(rws: &mut Stream<R>, _framelist: &FrameList,
-		                    geolist: &GeometryList) -> Result<Atomic> {
+	pub fn read<R: ReadExt>(rws: &mut Stream<R>,
+		                    framelist: &FrameList,
+		                    geolist: &GeometryList)
+	                            -> Result<Atomic> {
 
 		let _header = try!(Self::read_header(rws));
 
-		let (_frame_index, geo_index, flags, _) = try!(Struct::read_up(rws, |rws| {
+		let (frame_index, geo_index, flags, _) = try!(Struct::read_up(rws, |rws| {
 			Ok((try!(rws.read_u32::<LittleEndian>()),
 				try!(rws.read_u32::<LittleEndian>()),
 				try!(rws.read_u32::<LittleEndian>()),
 				try!(rws.read_u32::<LittleEndian>())))
 		}));
+
+		let rcframe = framelist.frames.get(frame_index as usize).map(|rcframe| rcframe.clone());
 
 		// read a child Geometry section if `geo_list` is empty.
 		let rcgeo = match geolist.0 {
@@ -51,6 +53,7 @@ impl Atomic {
 		try!(Extension::skip_section(rws));
 
 		Ok(Atomic {
+			frame: rcframe,
 			geometry: rcgeo,
 			flags: AtomicFlags::from_bits_truncate(flags),
 		})

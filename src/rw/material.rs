@@ -1,7 +1,7 @@
 use byteorder::{ReadBytesExt, LittleEndian};
 use super::{Section, Struct, Result, ReadExt, Stream};
 
-use super::{Texture, SectionBuf, Extension, Rgba};
+use super::{Texture, Extension, Rgba};
 use super::Error;
 
 use std::rc::Rc;

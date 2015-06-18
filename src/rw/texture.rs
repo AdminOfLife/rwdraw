@@ -1,12 +1,9 @@
 use byteorder::{ReadBytesExt, LittleEndian};
 use super::{Section, Struct, Result, Error, ReadExt, Stream};
 
-use super::{StringExt};
-use super::{Extension, Vec3, Uv, Sphere, Rgba};
-use super::{Material, MaterialList};
+use super::{Extension, StringExt};
 
-use std::rc::{Rc};
-use std::borrow::Cow;
+use std::rc::Rc;
 use std::collections::HashMap;
 
 // TODO support III/VC and PS2 texture dictionaries
@@ -32,7 +29,7 @@ pub enum WrapMode {
 }
 
 #[derive(Debug)]
-pub enum RasterFormat {
+enum RasterFormat {
     /// 1 bit alpha, RGB 5 bits each; also used for DXT1 with alpha.
     R5G5B5A1,
     /// 5 bits red, 6 bits green, 5 bits blue; also used for DXT1 without alpha
@@ -79,7 +76,7 @@ impl WrapMode {
 
 impl RasterFormat {
     fn from_raw(raw: u32) -> Option<RasterFormat> {
-        match (raw & 0x0F00) {
+        match raw & 0x0F00 {
             0x0100 => Some(RasterFormat::R5G5B5A1),
             0x0200 => Some(RasterFormat::R5G6B5),
             0x0300 => Some(RasterFormat::R4G4B4A4),
