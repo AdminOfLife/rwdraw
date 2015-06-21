@@ -1,7 +1,7 @@
 use byteorder::{ReadBytesExt, LittleEndian};
 use super::{Section, Struct, Result, ReadExt, Stream};
 
-use super::{FrameList, Atomic, GeometryList, Extension};
+use super::{FrameList, Light, Atomic, GeometryList, Extension};
 
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ impl Clump {
 	pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Clump> {
 		let _header = try!(Self::read_header(rws));
 
-		let (natomics, _nlight, _ncameras) = try!(Struct::read_up(rws, |rws| {
+		let (natomics, nlights, _ncameras) = try!(Struct::read_up(rws, |rws| {
 			Ok((try!(rws.read_u32::<LittleEndian>()),
 			    try!(rws.read_u32::<LittleEndian>()),
 			    try!(rws.read_u32::<LittleEndian>())))
@@ -31,8 +31,11 @@ impl Clump {
 			atomics.push(try!(Atomic::read(rws, &framelist, &geolist)));
 		}
 
-		// lights
 		// TODO
+		for _ in (0..nlights) {
+			try!(Struct::skip_section(rws));
+			try!(Light::skip_section(rws));
+		}
 
 		// camera
 		// TODO

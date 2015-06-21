@@ -8,16 +8,16 @@ use std::rc::Rc;
 
 #[derive(Debug, Copy, Clone)]
 pub struct SurfaceProperties {
-    ambient: f32,
-    specular: f32,
-    diffuse: f32,
+    pub ambient: f32,
+    pub specular: f32,
+    pub diffuse: f32,
 }
 
 #[derive(Debug)]
 pub struct Material {
-    texture: Option<Rc<Texture>>,
-    color: Rgba,
-    surf: SurfaceProperties,
+    pub texture: Option<Rc<Texture>>,
+    pub color: Rgba,
+    pub surf: SurfaceProperties,
 }
 
 #[derive(Debug)]

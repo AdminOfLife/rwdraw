@@ -14,174 +14,48 @@ extern crate clock_ticks;
 extern crate rctree;
 
 mod rw;
+mod native;
+
+use native::{NativeGeometry, NativeDictionaryList, NativeTexture};
 
 mod user;
 use user::{UserCamera, UserControl};
 
 use std::fs::File;
+use std::path::Path;
 use std::io::BufReader;
-use std::ops::Range;
+use std::collections::HashMap;
 
 use glium::{Surface, DisplayBuild};
-use glium::vertex::{VertexBuffer};
-use glium::index::{IndexBuffer, PrimitiveType};
-use glium::texture::{CompressedSrgbTexture2d};
-use glium::glutin::{self, Event};
-use glium::draw_parameters::DepthTest;
 use glium::backend::Facade;
+use glium::glutin::{self, Event};
+use cgmath::{Deg, PerspectiveFov, Matrix4, Vector3, Vector4};
 
-use cgmath::{Deg, Point3, PerspectiveFov, Matrix4, Vector2, Vector4};
+pub fn load_model<F, P1, P2>(facade: &F, dff: P1, txd: P2) -> NativeGeometry
+                             where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
+    let mut rw = rw::Instance::new();
 
+    let (dff, txd) = (dff.as_ref(), txd.as_ref());
 
+    println!("Loading texture dictionary...");
+    let dictionary = {
+        let txdname = txd.file_stem().unwrap().to_string_lossy().into_owned();
+        let f = BufReader::new(File::open(&txd).unwrap());
+        rw::TexDictionary::read(&mut rw::Stream::new(f, &mut rw), txdname).unwrap()
+    };
 
+    println!("Loading atomic...");
+    let atomic = {
+        rw.bind_dictionary(&dictionary);
+        let f = BufReader::new(File::open(dff).unwrap());
+        let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
+        clump.into_atomic().unwrap()
+    };
 
-#[derive(Debug, Copy, Clone)]
-struct VertexPrelit {
-    pos: Point3<f32>,
-    color: Vector4<f32>,
-    uv0: Vector2<f32>,
-}
+    let mut dicts = NativeDictionaryList::new();
+    dicts.add_rwdict(facade, &dictionary);
 
-implement_vertex!(VertexPrelit, pos, color, uv0);
-
-#[derive(Debug)]
-enum NativeVertexBuffer {
-    Prelit(VertexBuffer<VertexPrelit>),
-}
-
-impl<'a> glium::vertex::IntoVerticesSource<'a> for &'a NativeVertexBuffer {
-    fn into_vertices_source(self) -> glium::vertex::VerticesSource<'a> {
-        use NativeVertexBuffer::*;
-        match *self {
-            Prelit(ref vbo) => vbo.into_vertices_source(),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct NativeMesh {
-    range: Range<usize>,
-}
-
-#[derive(Debug)]
-struct NativeGeometry {
-    vbo: NativeVertexBuffer,
-    ibo: IndexBuffer<u16>,
-    meshes: Vec<NativeMesh>,
-}
-
-impl NativeGeometry {
-
-    fn from_rw<F: Facade>(facade: &F, rwgeo: &rw::Geometry) -> Option<NativeGeometry> {
-        use NativeVertexBuffer::*;
-        
-        struct RwData<'a> {
-            verts: Option<&'a Vec<rw::Vec3>>,
-            normals: Option<&'a Vec<rw::Vec3>>,
-            colors: Option<&'a Vec<rw::Rgba>>,
-            uv0: Option<&'a Vec<rw::Uv>>,
-        }
-
-        // Gather all the information we need to pattern match this RwGeometry and build the
-        // correct Vertex Buffer Object.
-        let rwdata = {
-            RwData {
-                // ignore any morph target that is not the first one because gta uses only that.
-                verts: rwgeo.targets.get(0).and_then(|target| target.verts.as_ref()),
-                normals: rwgeo.targets.get(0).and_then(|target| target.normals.as_ref()),
-                colors: rwgeo.colors.as_ref(),
-                uv0: rwgeo.uv_sets.get(0),
-            }
-        };
-
-        // Build the vertex buffer specific for this type of model, we gonna do this by pattern
-        // matching the data we previosly built. 
-        let vertex_buffer = match rwdata {
-            // In case it's a prelit geometry...
-            RwData { verts: Some(verts), normals: _, colors: Some(colors), uv0: Some(uv0) } => {
-
-                // Maybe make this a pattern guard?
-                if verts.len() != colors.len() || colors.len() != uv0.len() {
-                    return None;
-                }
-
-                NativeVertexBuffer::Prelit(
-                    VertexBuffer::new(
-                        facade,
-                        izip!(verts.iter(), colors.iter(), uv0.iter()).map(|(vert, rgba, uv0)| {
-                            VertexPrelit {
-                                pos: (*vert).into(),
-                                color: (*rgba).into(), // auto converts between 0-255 to 0-1 range
-                                uv0: (*uv0).into(),
-                            }
-                        }).collect::<Vec<_>>()
-                    )
-                )
-            },
-            // Not sure what we're dealing with:
-            _ => return None,
-        };
-
-        // Builds the index buffer and meshes, a mesh basically consists of a range of indices in
-        // the index buffer to be used to render a slice of the geometry.
-        let (indices, meshes) = {
-            let mut current_index = 0;
-            let mut indices = Vec::with_capacity(rwgeo.meshlist.total_indices as usize);
-            let mut meshes = Vec::with_capacity(rwgeo.meshlist.meshes.len());
-
-            for rwmesh in rwgeo.meshlist.meshes.iter() {
-                let start = current_index;  // beggining of current mesh
-                current_index += rwmesh.indices.len();
-                indices.extend(rwmesh.indices.iter().cloned());
-                meshes.push(NativeMesh {
-                    range: Range { start: start, end: current_index },
-                });
-            }
-
-            (indices, meshes)
-        };
-
-        // TODO other formats other than TriStrip, check RwGeometry flags
-        let index_buffer = IndexBuffer::new(facade, PrimitiveType::TriangleStrip, &indices);
-
-        Some(NativeGeometry {
-            vbo: vertex_buffer,
-            ibo: index_buffer,
-            meshes: meshes,
-        })
-    }
-}
-
-#[derive(Debug)]
-struct NativeTexture {
-    tex: CompressedSrgbTexture2d,
-}
-
-#[derive(Debug)]
-enum NativeTextureBuffer {
-    Compressed2d(CompressedSrgbTexture2d),
-}
-
-impl NativeTexture {
-    fn from_rw<F: Facade>(facade: &F, rwtex: &rw::Texture) -> Option<NativeTexture> {
-        // TODO if_supported for dxt
-        use rw::TextureData;
-        use glium::texture::{CompressedSrgbTexture2d, CompressedSrgbFormat};
-
-        let tex = match rwtex.data {
-            TextureData::Dxt1c(ref data) => {
-                let tex = CompressedSrgbTexture2d::with_compressed_data(facade, data,
-                                                                        rwtex.width as u32, rwtex.height as u32,
-                                                                        CompressedSrgbFormat::S3tcDxt1NoAlpha);
-                tex
-            },
-            _ => unimplemented!(),
-        };
-
-        Some(NativeTexture {
-            tex: tex,
-        })
-    }
+    NativeGeometry::from_rw(facade, &atomic.geometry, &dicts).unwrap()
 }
 
 fn main() {
@@ -190,6 +64,21 @@ fn main() {
 
     let x_res = 800.0f32;
     let y_res = 600.0f32;
+
+    let (dffname, txdname) = {
+        let mut args = std::env::args();
+        match (args.next(), args.next(), args.next()) {
+            (Some(_), Some(dffname), Some(txdname)) => {
+                println!("Using clump '{}' with dictionary '{}'", dffname, txdname);
+                (dffname, txdname)
+            },
+            _ => {
+                println!("Usage: rwdraw <dffpath> <txdpath>");
+                return;
+            },
+        }
+    };
+
 
     let display = glutin::WindowBuilder::new()
                             .with_title("rwdraw".into())
@@ -204,25 +93,6 @@ fn main() {
 
     let mut curr_frame_time: f64 = clock_ticks::precise_time_s();
     let mut last_frame_time: f64;
-
-    // TODO less unwrap
-    let mut rw = rw::Instance::new();
-
-    let dictionary = {
-        let f = BufReader::new(File::open("target/dynbarrels.txd").unwrap());
-        rw::TexDictionary::read(&mut rw::Stream::new(f, &mut rw), "dynbarrels").unwrap()
-    };
-
-    let atomic = {
-        rw.bind_dictionary(&dictionary);
-        let f = BufReader::new(File::open("target/barrel4.dff").unwrap());
-        let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
-        clump.into_atomic().unwrap()
-    };
-
-    let natgeo = NativeGeometry::from_rw(&display, &atomic.geometry).unwrap();
-
-    let texture = NativeTexture::from_rw(&display, dictionary.read_texture("barrel_64HV", None).unwrap().as_ref()).unwrap();
 
     let mut vertex_shader_src = String::with_capacity(512);
     BufReader::new(
@@ -248,10 +118,18 @@ fn main() {
         far: 1000.0,
     });
 
+    let tex_blank = NativeTexture::new_blank_texture(&display);
+
+    // cargo run -- "target/containercrane_04.dff" "target/cranes_dyn2_cj.txd"
+    let natgeo = load_model(&display, dffname, txdname);
+
     loop {
         last_frame_time = curr_frame_time;
         curr_frame_time = clock_ticks::precise_time_s();
         let delta_time  = (curr_frame_time - last_frame_time) as f32;
+
+        let mut target = display.draw();
+        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
         user.process(None);
         for event in display.poll_events() {
@@ -262,24 +140,37 @@ fn main() {
             }
         }
 
+        let xzy_to_xyz = Matrix4::<f32>::from_cols(
+            Vector4::new(1.0, 0.0, 0.0, 0.0),
+            Vector4::new(0.0, 0.0, -1.0, 0.0),
+            Vector4::new(0.0, 1.0, 0.0, 0.0),
+            Vector4::new(0.0, 0.0, 0.0, 1.0),
+        );
+
         let view = camera.process_view_matrix(&user, delta_time);
-        let model = Matrix4::<f32>::identity();
 
-        let uniforms = uniform! {
-            model_view_proj: proj * view * model,
-            tex: &texture.tex,
-        };
+        for &model in &[Matrix4::<f32>::identity()]
+        {
+            for mesh in natgeo.meshes.iter() {
 
-        let mut target = display.draw();
-        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
-        for mesh in natgeo.meshes.iter() {
-            let params = glium::DrawParameters {
-                depth_test: DepthTest::IfLess,
-                depth_write: true,
-                .. Default::default()
-            };
-            target.draw(&natgeo.vbo, natgeo.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
+                use glium::draw_parameters::{DepthTest, BlendingFunction};
+                use glium::draw_parameters::LinearBlendingFactor::*;
+
+                let uniforms = uniform! {
+                    model_view_proj: proj * view * xzy_to_xyz * model,
+                    tex: mesh.texture.as_ref().map(|texture| &texture.tex).unwrap_or(&tex_blank),
+                };
+
+                let params = glium::DrawParameters {
+                    depth_test: DepthTest::IfLess,
+                    depth_write: true,
+                    blending_function: Some(BlendingFunction::Addition { source: SourceAlpha, destination: OneMinusSourceAlpha }),
+                    .. Default::default()
+                };
+                target.draw(&natgeo.vbo, natgeo.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
+            }
         }
-        target.finish();
+
+        target.finish().unwrap();
     }
 }

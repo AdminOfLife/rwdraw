@@ -13,6 +13,7 @@ mod atomic;
 mod geometry;
 mod material;
 mod texture;
+mod light;
 
 pub use self::prims::{Rgba, Uv, Vec3, Sphere, Matrix};
 pub use self::section::{Struct, StringExt, Extension};
@@ -21,7 +22,8 @@ pub use self::frame::{FrameList, NodeNamePlg, FrameData, FrameRef};
 pub use self::atomic::Atomic;
 pub use self::geometry::{GeometryList, Geometry};
 pub use self::material::{MaterialList, Material, SurfaceProperties};
-pub use self::texture::{Texture, TexDictionary, TexNative, FilterMode, WrapMode, TextureData};
+pub use self::texture::{Texture, TexDictionary, TexNative, FilterMode, WrapMode, TextureData, TexLevel};
+pub use self::light::Light;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 

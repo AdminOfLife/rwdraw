@@ -12,8 +12,6 @@ clock_ticks = "0.0.6"
 rctree = "0.1"
 
 [dependencies.glium]
-# version = "*"
-# path = "../../forks/glium"
-git = "https://github.com/tomaka/glium"
+version = "*"
 features = ["cgmath"]
 default-features = true

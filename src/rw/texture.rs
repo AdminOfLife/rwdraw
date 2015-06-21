@@ -5,10 +5,11 @@ use super::{Extension, StringExt};
 
 use std::rc::Rc;
 use std::collections::HashMap;
+use std::cmp;
 
 // TODO support III/VC and PS2 texture dictionaries
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum FilterMode {
     None,
     Nearest,
@@ -19,7 +20,7 @@ pub enum FilterMode {
     LinearMipLinear,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WrapMode {
     None,
     Repeat,
@@ -28,7 +29,7 @@ pub enum WrapMode {
     Border,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum RasterFormat {
     /// 1 bit alpha, RGB 5 bits each; also used for DXT1 with alpha.
     R5G5B5A1,
@@ -98,13 +99,20 @@ pub enum TextureData {
 }
 
 #[derive(Debug)]
+pub struct TexLevel {
+    pub data: TextureData,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Debug)]
 pub struct Texture {
     pub dict: Rc<String>,
     pub name: Rc<String>,
     pub mask: Rc<String>,
-    pub data: TextureData,
-    pub width: u16,
-    pub height: u16,
+    pub mips: Vec<TexLevel>,
+    pub width: u16,     // mips[0].width
+    pub height: u16,    // mips[0].height
     pub filter: FilterMode,
     pub wrap_x: WrapMode,
     pub wrap_y: WrapMode,
@@ -112,7 +120,8 @@ pub struct Texture {
 
 #[derive(Debug)]
 pub struct TexDictionary {
-    textures: HashMap<String, Rc<Texture>>,
+    pub name: Rc<String>,
+    pub textures: HashMap<String, Rc<Texture>>,
 }
 
 #[derive(Debug)]
@@ -181,6 +190,7 @@ impl TexDictionary {
         try!(Extension::skip_section(rws));
 
         Ok(Rc::new(TexDictionary {
+            name: dict_name,
             textures: textures,
         }))
     }
@@ -243,28 +253,51 @@ impl TexNative {
         let format = try!(RasterFormat::from_raw(raster_format)
                             .ok_or(Error::Other(format!("Invalid raster format {}", raster_format))));
 
-        let data = {
+        let mips = {
             if (flag_ext_pal8 || flag_ext_pal4) && (true)  {
                 unimplemented!();
             } else {
-                // TODO check if raster_size matches the width height format things
+                let (mut width, mut height) = (width, height);
+                let mut mips = Vec::with_capacity(num_levels as usize);
+                let mut fuck_me = false;
 
-                // TODO mipmaps
+                for _ in (0..num_levels) {
+                    let raster_size = try!(rws.read_u32::<LittleEndian>()) as usize;
 
-                let raster_size = try!(rws.read_u32::<LittleEndian>()) as usize;
+                    // TODO check if raster_size matches the width height format things
 
-                match (format, is_compressed, has_alpha) {
-                    (RasterFormat::R5G6B5, true, false) => { // DXT1c
-                        TextureData::Dxt1c(try!(rws.read_bytes(raster_size)))
-                    },
-                    (RasterFormat::R5G5B5A1, true, true) => { // DXT1a
-                        TextureData::Dxt1a(try!(rws.read_bytes(raster_size)))
-                    },
-                    (RasterFormat::R4G4B4A4, true, true) => { // DXT3
-                        TextureData::Dxt3(try!(rws.read_bytes(raster_size)))
-                    },
-                    _ => unimplemented!(),
+                    let data = match (format, is_compressed, has_alpha) {
+                        (RasterFormat::R5G6B5, true, false) => { // DXT1c
+                            TextureData::Dxt1c(try!(rws.read_bytes(raster_size)))
+                        },
+                        (RasterFormat::R5G5B5A1, true, true) => { // DXT1a
+                            TextureData::Dxt1a(try!(rws.read_bytes(raster_size)))
+                        },
+                        (RasterFormat::R4G4B4A4, true, true) => { // DXT3
+                            TextureData::Dxt3(try!(rws.read_bytes(raster_size)))
+                        },
+                        _ => unimplemented!(),
+                    };
+
+                    // Why the fuck this happens?
+                    if raster_size == 0 {
+                        fuck_me = true;
+                    }
+
+                    if !fuck_me {
+                        mips.push(TexLevel {
+                            data: data,
+                            width: width,
+                            height: height,
+                        });
+                    }
+
+                    width = cmp::max(1, width / 2);
+                    height = cmp::max(1, height / 2);
                 }
+
+                mips.shrink_to_fit();
+                mips
             }
         };
 
@@ -275,7 +308,7 @@ impl TexNative {
             dict: dict_name.clone(),
             name: name.clone(),
             mask: mask.clone(),
-            data: data,
+            mips: mips,
             width: width,
             height: height,
             filter: filter,
