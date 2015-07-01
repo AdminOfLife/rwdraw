@@ -1,13 +1,12 @@
+// TODO support III/VC and PS2 texture dictionaries
+
 use byteorder::{ReadBytesExt, LittleEndian};
 use super::{Section, Struct, Result, Error, ReadExt, Stream};
 
 use super::{Extension, StringExt};
-
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::cmp;
-
-// TODO support III/VC and PS2 texture dictionaries
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum FilterMode {
@@ -33,17 +32,17 @@ pub enum WrapMode {
 enum RasterFormat {
     /// 1 bit alpha, RGB 5 bits each; also used for DXT1 with alpha.
     R5G5B5A1,
-    /// 5 bits red, 6 bits green, 5 bits blue; also used for DXT1 without alpha
+    /// 5 bits red, 6 bits green, 5 bits blue; also used for DXT1 without alpha.
     R5G6B5,
-    /// RGBA 4 bits each; also used for DXT3
+    /// RGBA 4 bits each; also used for DXT3.
     R4G4B4A4,
-    /// gray scale
+    /// gray scale.
     A8L8,
-    /// RGBA 8 bits each
+    /// RGBA 8 bits each.
     R8G8B8A8,
-    /// RGB 8 bits each
+    /// RGB 8 bits each.
     R8G8B8,
-    /// RGB 5 bits each
+    /// RGB 5 bits each.
     R5G5B5,
 }
 

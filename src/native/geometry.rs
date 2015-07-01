@@ -115,7 +115,7 @@ impl NativeGeometry {
                 current_index += rwmesh.indices.len();
                 indices.extend(rwmesh.indices.iter().cloned());
 
-                let texture = match rwmesh.mat.texture {
+                let texture = match rwmesh.material.texture {
                     Some(ref tex) => dicts.find(&tex.dict, &tex.name),
                     None => None,
                 };

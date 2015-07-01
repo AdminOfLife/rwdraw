@@ -1,4 +1,4 @@
-
+#![feature(alloc)]
 // TODO there are lots of unwraps because of testing, get rid of those and add proper error
 // handling
 

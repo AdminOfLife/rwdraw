@@ -1,11 +1,13 @@
 #![allow(dead_code)]
+#![feature(alloc)]
 use byteorder::{self, ReadBytesExt, LittleEndian};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::rc::Rc;
 
 // TODO replace all the occ to ok_or to something more performancy because of string creation
+// TODO fix version detection on streams
 
-mod prims;
+mod basic;
 mod section;
 mod clump;
 mod frame;
@@ -15,10 +17,10 @@ mod material;
 mod texture;
 mod light;
 
-pub use self::prims::{Rgba, Uv, Vec3, Sphere, Matrix};
+pub use self::basic::{Rgba, Uv, Vec3, Sphere, Matrix, BBox, Rect, Line};
 pub use self::section::{Struct, StringExt, Extension};
 pub use self::clump::Clump;
-pub use self::frame::{FrameList, NodeNamePlg, FrameData, FrameRef};
+pub use self::frame::{FrameList, Frame, FrameObjectValue, FrameObject, NodeNamePlg};
 pub use self::atomic::Atomic;
 pub use self::geometry::{GeometryList, Geometry};
 pub use self::material::{MaterialList, Material, SurfaceProperties};
