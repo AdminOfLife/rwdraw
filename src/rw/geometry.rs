@@ -22,23 +22,23 @@ pub struct GeometryList(pub Vec<Rc<Geometry>>);
 /// Instead, you should create an Atomic with a reference the Geometry, then link that Atomic to a Frame. 
 #[derive(Debug)]
 pub struct Geometry {
-	/// Render as triangle strips.
+    /// Render as triangle strips.
     pub is_tri_strip: bool,
     /// Pre-light colors.
     ///
     /// One element for each vertex.
-	pub colors: Option<Vec<Rgba>>,
-	/// Texture coordinate sets.
-	///
-	/// One element for each coordinate set (uv0, uv1, ...), and then one element for each vertex.
-	pub uv_sets: Vec<Vec<Uv>>,
-	/// List of triangles related to this geometry.
-	///
-	/// Each triangle point to a vertex index on the current morph target and the a material index.
-	pub faces: Vec<Triangle>,
-	/// Defines vertex positions and normals.
-	pub targets: Vec<MorphTarget>,
-	/// Defines triangle's appearance.
+    pub colors: Option<Vec<Rgba>>,
+    /// Texture coordinate sets.
+    ///
+    /// One element for each coordinate set (uv0, uv1, ...), and then one element for each vertex.
+    pub uv_sets: Vec<Vec<Uv>>,
+    /// List of triangles related to this geometry.
+    ///
+    /// Each triangle point to a vertex index on the current morph target and the a material index.
+    pub faces: Vec<Triangle>,
+    /// Defines vertex positions and normals.
+    pub targets: Vec<MorphTarget>,
+    /// Defines triangle's appearance.
     pub matlist: MaterialList,
     /// List of meshes to be rendered.
     ///
@@ -57,22 +57,22 @@ pub struct Geometry {
 /// the same texture data and Tristripping is also performed at the this level. 
 #[derive(Debug)]
 pub struct Mesh {
-	// TODO priv data?
-	/// Material associated with this mesh triangles.
-	pub material: Rc<Material>,
-	/// Indices of triangles making the mesh.
-	pub indices: Vec<u16>,
+    // TODO priv data?
+    /// Material associated with this mesh triangles.
+    pub material: Rc<Material>,
+    /// Indices of triangles making the mesh.
+    pub indices: Vec<u16>,
 }
 
 /// Header for all meshes that constitute a single `Geometry`.
 #[derive(Debug)]
 pub struct MeshHeader {
-	/// Render as triangle strips.
-	pub is_tri_strip: bool,
-	/// Total triangle index count in all meshes.
-	pub total_indices: u32,
-	/// List of meshes.
-	pub meshes: Vec<Mesh>,
+    /// Render as triangle strips.
+    pub is_tri_strip: bool,
+    /// Total triangle index count in all meshes.
+    pub total_indices: u32,
+    /// List of meshes.
+    pub meshes: Vec<Mesh>,
 }
 
 /// Represents a triangle in a geometry.
@@ -81,82 +81,82 @@ pub struct MeshHeader {
 /// the geometry's material list.
 #[derive(Debug, Copy, Clone)]
 pub struct Triangle {
-	// `Triangle`s are necessary only to calculate `Mesh`es, though those meshes are mostly like
-	// already precalculated inside our clump streams (dff).
+    // `Triangle`s are necessary only to calculate `Mesh`es, though those meshes are mostly like
+    // already precalculated inside our clump streams (dff).
 
-	/// Y vertex index.
-	pub y_id: u16,
-	/// X vertex index.
-	pub x_id: u16,
-	/// Index into material list 
-	pub mat_id: u16,
-	/// Z vertex index.
-	pub z_id: u16,
+    /// Y vertex index.
+    pub y_id: u16,
+    /// X vertex index.
+    pub x_id: u16,
+    /// Index into material list 
+    pub mat_id: u16,
+    /// Z vertex index.
+    pub z_id: u16,
 }
 
 /// Keyframe points for interpolation in animations. A single keyframe means a non-keyframe geometry.
 #[derive(Debug)]
 pub struct MorphTarget {
-	// Grand Theft Auto does not use keyframe animations, and as such there's always only a
-	// single morph target in Geometry.
+    // Grand Theft Auto does not use keyframe animations, and as such there's always only a
+    // single morph target in Geometry.
 
-	/// Bounding sphere of the vertices.
-	pub sphere: Sphere,
-	pub unk1: u32, unk2: u32,
-	/// Keyframe / Geometry vertex positions.
-	pub verts: Option<Vec<Vec3>>,
-	/// Keyframe / Geometry normals.
-	pub normals: Option<Vec<Vec3>>,
+    /// Bounding sphere of the vertices.
+    pub sphere: Sphere,
+    pub unk1: u32, unk2: u32,
+    /// Keyframe / Geometry vertex positions.
+    pub verts: Option<Vec<Vec3>>,
+    /// Keyframe / Geometry normals.
+    pub normals: Option<Vec<Vec3>>,
 }
 
 impl Section for GeometryList {
-	fn section_id() -> u32 { 0x001A }
+    fn section_id() -> u32 { 0x001A }
 }
 
 impl Section for Geometry {
-	fn section_id() -> u32 { 0x000F }
+    fn section_id() -> u32 { 0x000F }
 }
 
 impl Section for MeshHeader {
-	fn section_id() -> u32 { 0x050E }	// Bin Mesh PLG
+    fn section_id() -> u32 { 0x050E }   // Bin Mesh PLG
 }
 
 impl GeometryList {
-	/// Gets the geometry at the specified index or `None` if out of range.
-	pub fn get(&self, index: usize) -> Option<Rc<Geometry>> {
-		self.0.get(index).map(|rcgeo| rcgeo.clone())
-	}
+    /// Gets the geometry at the specified index or `None` if out of range.
+    pub fn get(&self, index: usize) -> Option<Rc<Geometry>> {
+        self.0.get(index).map(|rcgeo| rcgeo.clone())
+    }
 
-	/// Reads a Geometry List off the RenderWare Stream.
-	pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<GeometryList> {
-		let _header = try!(Self::read_header(rws));
+    /// Reads a Geometry List off the RenderWare Stream.
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<GeometryList> {
+        let _header = try!(Self::read_header(rws));
 
-		let numgeo = try!(Struct::read_up(rws, |rws| {
-			Ok(try!(rws.read_u32::<LittleEndian>()))
-		}));
-		
-		let mut geolist = Vec::with_capacity(numgeo as usize);
-		for _ in (0..numgeo) {
-			geolist.push( Rc::new(try!(Geometry::read(rws))) );
-		}
+        let numgeo = try!(Struct::read_up(rws, |rws| {
+            Ok(try!(rws.read_u32::<LittleEndian>()))
+        }));
+        
+        let mut geolist = Vec::with_capacity(numgeo as usize);
+        for _ in (0..numgeo) {
+            geolist.push( Rc::new(try!(Geometry::read(rws))) );
+        }
 
-		Ok(GeometryList(geolist))
-	}
+        Ok(GeometryList(geolist))
+    }
 }
 
 impl Geometry {
-	/// Reads a Geometry off the RenderWare Stream.
-	pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Geometry> {
-		let header = try!(Self::read_header(rws));
+    /// Reads a Geometry off the RenderWare Stream.
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Geometry> {
+        let header = try!(Self::read_header(rws));
 
-		let (flags, colors, uv_sets, faces, targets) = try!(Struct::read_up(rws, |rws| {
+        let (flags, colors, uv_sets, faces, targets) = try!(Struct::read_up(rws, |rws| {
 
-			let flags = try!(rws.read_u16::<LittleEndian>());
-			let num_uv = try!(rws.read_u8());
-			let _natflags = try!(rws.read_u8()); // TODO what is this?
-			let num_tris = try!(rws.read_u32::<LittleEndian>());
-			let num_verts = try!(rws.read_u32::<LittleEndian>());
-			let num_morphs = try!(rws.read_u32::<LittleEndian>());
+            let flags = try!(rws.read_u16::<LittleEndian>());
+            let num_uv = try!(rws.read_u8());
+            let _natflags = try!(rws.read_u8()); // TODO what is this?
+            let num_tris = try!(rws.read_u32::<LittleEndian>());
+            let num_verts = try!(rws.read_u32::<LittleEndian>());
+            let num_morphs = try!(rws.read_u32::<LittleEndian>());
 
             // On 3.4.0.3 and below there are some additional information
             let _amb_difu_spec = {
@@ -171,135 +171,135 @@ impl Geometry {
                 }
             };
 
-			// This geometry has pre-light colors?
-			let colors = {
-				if (flags & 8) != 0 {
-					let mut v = Vec::with_capacity(num_verts as usize);
-					for _ in (0..num_verts) {
-						v.push(try!(Rgba::read(rws)));
-					}
-					Some(v)
-				} else {
-					None
-				}
-			};
+            // This geometry has pre-light colors?
+            let colors = {
+                if (flags & 8) != 0 {
+                    let mut v = Vec::with_capacity(num_verts as usize);
+                    for _ in (0..num_verts) {
+                        v.push(try!(Rgba::read(rws)));
+                    }
+                    Some(v)
+                } else {
+                    None
+                }
+            };
 
-			// Texture coordinates sets.
-			let uv_sets = {
-				let mut sets = Vec::with_capacity(num_uv as usize);
-				for _ in (0..num_uv) {
-					let mut v = Vec::with_capacity(num_verts as usize);
-					for _ in (0..num_verts) {
-						v.push(try!(Uv::read(rws)));
-					}
-					sets.push(v)
-				}
-				sets
-			};
+            // Texture coordinates sets.
+            let uv_sets = {
+                let mut sets = Vec::with_capacity(num_uv as usize);
+                for _ in (0..num_uv) {
+                    let mut v = Vec::with_capacity(num_verts as usize);
+                    for _ in (0..num_verts) {
+                        v.push(try!(Uv::read(rws)));
+                    }
+                    sets.push(v)
+                }
+                sets
+            };
 
-			// Triangles that make up the model.
-			let faces = {
-				let mut v = Vec::with_capacity(num_tris as usize);
-				for _ in (0..num_tris) {
-					v.push(Triangle {
-						y_id: try!(rws.read_u16::<LittleEndian>()),
-						x_id: try!(rws.read_u16::<LittleEndian>()),
-						mat_id: try!(rws.read_u16::<LittleEndian>()),
-						z_id: try!(rws.read_u16::<LittleEndian>()),
-					});
-				}
-				v
-			};
-			
-			// Morph targets.
-			let targets = {
-				let mut v = Vec::with_capacity(num_morphs as usize);
-				for _ in (0..num_morphs) {
-					v.push(MorphTarget {
-						sphere: try!(Sphere::read(rws)),
-						unk1: try!(rws.read_u32::<LittleEndian>()),
-						unk2: try!(rws.read_u32::<LittleEndian>()),
-						verts: {
-							// This geometry has positions?
-							if (flags & 2) != 0 {
-								let mut verts = Vec::with_capacity(num_verts as usize);
-								for _ in (0..num_verts) {
-									verts.push(try!(Vec3::read(rws)));
-								}
-								Some(verts)
-							} else {
-								None
-							}
-						},
-						normals: {
-							// This geometry has vertex normals?
-							if (flags & 16) != 0 {
-								let mut normz = Vec::with_capacity(num_verts as usize);
-								for _ in (0..num_verts) {
-									normz.push(try!(Vec3::read(rws)));
-								}
-								Some(normz)
-							} else {
-								None
-							}
-						},
-					});
-				}
-				v
-			};
+            // Triangles that make up the model.
+            let faces = {
+                let mut v = Vec::with_capacity(num_tris as usize);
+                for _ in (0..num_tris) {
+                    v.push(Triangle {
+                        y_id: try!(rws.read_u16::<LittleEndian>()),
+                        x_id: try!(rws.read_u16::<LittleEndian>()),
+                        mat_id: try!(rws.read_u16::<LittleEndian>()),
+                        z_id: try!(rws.read_u16::<LittleEndian>()),
+                    });
+                }
+                v
+            };
+            
+            // Morph targets.
+            let targets = {
+                let mut v = Vec::with_capacity(num_morphs as usize);
+                for _ in (0..num_morphs) {
+                    v.push(MorphTarget {
+                        sphere: try!(Sphere::read(rws)),
+                        unk1: try!(rws.read_u32::<LittleEndian>()),
+                        unk2: try!(rws.read_u32::<LittleEndian>()),
+                        verts: {
+                            // This geometry has positions?
+                            if (flags & 2) != 0 {
+                                let mut verts = Vec::with_capacity(num_verts as usize);
+                                for _ in (0..num_verts) {
+                                    verts.push(try!(Vec3::read(rws)));
+                                }
+                                Some(verts)
+                            } else {
+                                None
+                            }
+                        },
+                        normals: {
+                            // This geometry has vertex normals?
+                            if (flags & 16) != 0 {
+                                let mut normz = Vec::with_capacity(num_verts as usize);
+                                for _ in (0..num_verts) {
+                                    normz.push(try!(Vec3::read(rws)));
+                                }
+                                Some(normz)
+                            } else {
+                                None
+                            }
+                        },
+                    });
+                }
+                v
+            };
 
-			Ok((flags, colors, uv_sets, faces, targets))
-		}));
+            Ok((flags, colors, uv_sets, faces, targets))
+        }));
 
         let matlist = try!(MaterialList::read(rws));
-		let meshlist = try!(Extension::read_for(rws, |rws| MeshHeader::read(rws, &matlist)));
+        let meshlist = try!(Extension::read_for(rws, |rws| MeshHeader::read(rws, &matlist)));
 
-		Ok(Geometry {
+        Ok(Geometry {
             is_tri_strip: (flags & 1) != 0,
-			colors: colors,
-			uv_sets: uv_sets,
-			faces: faces,
-			targets: targets,
+            colors: colors,
+            uv_sets: uv_sets,
+            faces: faces,
+            targets: targets,
             matlist: matlist,
             meshlist: meshlist.unwrap_or_else(|| {
-            	unimplemented!()	// TODO calculate meshlist ourselves
+                unimplemented!()    // TODO calculate meshlist ourselves
             }),
-		})
-	}
+        })
+    }
 }
 
 impl MeshHeader {
-	/// Reads a Bin Mesh PLG off the RenderWare Stream.
-	pub fn read<R: ReadExt>(rws: &mut Stream<R>, matlist: &MaterialList) -> Result<MeshHeader> {
-		let _header = try!(Self::read_header(rws));
+    /// Reads a Bin Mesh PLG off the RenderWare Stream.
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>, matlist: &MaterialList) -> Result<MeshHeader> {
+        let _header = try!(Self::read_header(rws));
 
-		let flags = try!(rws.read_u32::<LittleEndian>());
-		let num_mesh = try!(rws.read_u32::<LittleEndian>());
-		let total_idx = try!(rws.read_u32::<LittleEndian>());
+        let flags = try!(rws.read_u32::<LittleEndian>());
+        let num_mesh = try!(rws.read_u32::<LittleEndian>());
+        let total_idx = try!(rws.read_u32::<LittleEndian>());
 
-		Ok(MeshHeader {
-			is_tri_strip: (flags & 1) != 0, // TODO better analyze?
-			total_indices: total_idx,
-			meshes: try!((0..num_mesh).map(|_| Mesh::read(rws, matlist)).collect()),
-		})
-	}
+        Ok(MeshHeader {
+            is_tri_strip: (flags & 1) != 0, // TODO better analyze?
+            total_indices: total_idx,
+            meshes: try!((0..num_mesh).map(|_| Mesh::read(rws, matlist)).collect()),
+        })
+    }
 }
 
 impl Mesh {
-	/// Reads a single Mesh (from a Bin Mesh PLG) off the RenderWare Stream.
-	pub fn read<R: ReadExt>(rws: &mut Stream<R>, matlist: &MaterialList) -> Result<Mesh> {
-		let nidx = try!(rws.read_u32::<LittleEndian>()) as usize;
-		let matid = try!(rws.read_u32::<LittleEndian>()) as usize;
-		Ok(Mesh {
-			material: try!(matlist.get(matid)
-				                  .ok_or(Error::Other("Invalid 'Mesh' material id".into()))),
-			indices: {
-				let mut v = Vec::with_capacity(nidx);
-				for _ in (0..nidx) {
-					v.push(try!(rws.read_u32::<LittleEndian>().map(|x| x as u16)));
-				}
-				v
-			},
-		})
-	}
+    /// Reads a single Mesh (from a Bin Mesh PLG) off the RenderWare Stream.
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>, matlist: &MaterialList) -> Result<Mesh> {
+        let nidx = try!(rws.read_u32::<LittleEndian>()) as usize;
+        let matid = try!(rws.read_u32::<LittleEndian>()) as usize;
+        Ok(Mesh {
+            material: try!(matlist.get(matid)
+                                  .ok_or(Error::Other("Invalid 'Mesh' material id".into()))),
+            indices: {
+                let mut v = Vec::with_capacity(nidx);
+                for _ in (0..nidx) {
+                    v.push(try!(rws.read_u32::<LittleEndian>().map(|x| x as u16)));
+                }
+                v
+            },
+        })
+    }
 }
