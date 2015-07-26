@@ -74,7 +74,7 @@ impl NativeTexture {
         let mips_gen = CompressedMipmapsOption::EmptyMipmapsMax(rwtex.mips.len() as u32 - 1);
 
 
-        let tex = CompressedSrgbTexture2d::empty_with_format_if_supported(facade,
+        let tex = CompressedSrgbTexture2d::empty_with_format(facade,
                                                              format,
                                                              mips_gen,
                                                              rwtex.width as u32, rwtex.height as u32).unwrap();//<<<<<<<<<
@@ -85,7 +85,7 @@ impl NativeTexture {
                 TexLevel { data: TextureData::Dxt1c(ref data), width, height } |
                 TexLevel { data: TextureData::Dxt1a(ref data), width, height } |
                 TexLevel { data: TextureData::Dxt3(ref data), width, height } => {
-                    println!("{} = {} {}", data.len(), width, height);
+                    //println!("{} = {} {}", data.len(), width, height);
                     let rect = Rect { left: 0, bottom: 0, width: width as u32, height: height as u32 };
                     tex.mipmap(level).unwrap().write_compressed_data(rect, data, width as u32, height as u32, format);
                 },
@@ -106,6 +106,6 @@ impl NativeTexture {
             height: 16,
             format: ClientFormat::U8U8U8,
             data: repeat((255u8, 255, 255)).take(16*16).collect(),
-        })
+        }).unwrap() // MUST succeed
     }
 }

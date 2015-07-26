@@ -86,18 +86,20 @@ impl NativeGeometry {
                     return None;
                 }
 
-                NativeVertexBuffer::Prelit(
-                    VertexBuffer::new(
-                        facade,
-                        izip!(verts.iter(), colors.iter(), uv0.iter()).map(|(vert, rgba, uv0)| {
-                            VertexPrelit {
-                                pos: (*vert).into(),
-                                color: (*rgba).into(), // auto converts between 0-255 to 0-1 range
-                                uv0: (*uv0).into(),
-                            }
-                        }).collect::<Vec<_>>()
-                    )
-                )
+                let maybe_buffer = VertexBuffer::new(facade,
+                    izip!(verts.iter(), colors.iter(), uv0.iter()).map(|(vert, rgba, uv0)| {
+                        VertexPrelit {
+                            pos: (*vert).into(),
+                            color: (*rgba).into(), // auto converts between 0-255 to 0-1 range
+                            uv0: (*uv0).into(),
+                        }
+                    }).collect::<Vec<_>>().as_ref()
+                );
+
+                match maybe_buffer {
+                    Ok(vbo) => NativeVertexBuffer::Prelit(vbo),
+                    Err(_) => return None,
+                }
             },
             // Not sure what we're dealing with:
             _ => return None,
@@ -130,7 +132,13 @@ impl NativeGeometry {
         };
 
         // TODO other formats other than TriStrip, check RwGeometry flags
-        let index_buffer = IndexBuffer::new(facade, PrimitiveType::TriangleStrip, &indices);
+        let index_buffer = {
+            let maybe = IndexBuffer::new(facade, PrimitiveType::TriangleStrip, &indices);
+            match maybe {
+                Ok(ibo) => ibo,
+                Err(_) => return None,
+            }
+        };
 
         Some(NativeGeometry {
             vbo: vertex_buffer,

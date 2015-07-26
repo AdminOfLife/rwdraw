@@ -9,7 +9,7 @@ bitflags = "0.2"
 itertools = "0.3"
 cgmath = "0.2"
 clock_ticks = "0.0.6"
-rctree = "0.1"
+# rctree = "0.1"
 
 [dependencies.glium]
 version = "*"

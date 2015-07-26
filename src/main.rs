@@ -1,4 +1,5 @@
 #![feature(alloc)]
+#![feature(rc_weak)]
 // TODO there are lots of unwraps because of testing, get rid of those and add proper error
 // handling
 
@@ -11,7 +12,7 @@ extern crate itertools;
 extern crate byteorder;
 extern crate cgmath;
 extern crate clock_ticks;
-extern crate rctree;
+//extern crate rctree;
 
 mod rw;
 mod native;
@@ -128,9 +129,6 @@ fn main() {
         curr_frame_time = clock_ticks::precise_time_s();
         let delta_time  = (curr_frame_time - last_frame_time) as f32;
 
-        let mut target = display.draw();
-        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
-
         user.process(None);
         for event in display.poll_events() {
             user.process(Some(event.clone()));
@@ -139,6 +137,9 @@ fn main() {
                 _ => (),
             }
         }
+
+        let mut target = display.draw();
+        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
         let xzy_to_xyz = Matrix4::<f32>::from_cols(
             Vector4::new(1.0, 0.0, 0.0, 0.0),
