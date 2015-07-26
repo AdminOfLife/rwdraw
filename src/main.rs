@@ -18,35 +18,42 @@ mod rw;
 mod native;
 
 use native::{NativeGeometry, NativeDictionaryList, NativeTexture};
+use native::Renderer;
 
 mod user;
 use user::{UserCamera, UserControl};
 
 use std::fs::File;
-use std::path::Path;
+use std::path::{PathBuf, Path};
 use std::io::BufReader;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use glium::{Surface, DisplayBuild};
 use glium::backend::Facade;
 use glium::glutin::{self, Event};
 use cgmath::{Deg, PerspectiveFov, Matrix4, Vector3, Vector4};
 
-pub fn load_model<F, P1, P2>(facade: &F, dff: P1, txd: P2) -> NativeGeometry
+pub fn load_model<F, P1, P2>(facade: &F, dff: P1, txd: Option<P2>) -> NativeGeometry
                              where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
     let mut rw = rw::Instance::new();
 
-    let (dff, txd) = (dff.as_ref(), txd.as_ref());
+    //println!("Using clump '{}' with dictionary '{}'", dff, txd);
 
     println!("Loading texture dictionary...");
-    let dictionary = {
-        let txdname = txd.file_stem().unwrap().to_string_lossy().into_owned();
-        let f = BufReader::new(File::open(&txd).unwrap());
-        rw::TexDictionary::read(&mut rw::Stream::new(f, &mut rw), txdname).unwrap()
+    let dictionary = match txd {
+        Some(txd) => {
+            let txd = txd.as_ref();
+            let txdname = txd.file_stem().unwrap().to_string_lossy().into_owned();
+            let f = BufReader::new(File::open(&txd).unwrap());
+            rw::TexDictionary::read(&mut rw::Stream::new(f, &mut rw), txdname).unwrap()
+        },
+        None => rw::TexDictionary::new_empty("noname"),
     };
 
     println!("Loading atomic...");
     let atomic = {
+        let dff = dff.as_ref();
         rw.bind_dictionary(&dictionary);
         let f = BufReader::new(File::open(dff).unwrap());
         let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
@@ -59,6 +66,14 @@ pub fn load_model<F, P1, P2>(facade: &F, dff: P1, txd: P2) -> NativeGeometry
     NativeGeometry::from_rw(facade, &atomic.geometry, &dicts).unwrap()
 }
 
+pub fn try_load_model<F, P1, P2>(facade: &F, dff: Option<P1>, txd: Option<P2>) -> Option<NativeGeometry>
+                             where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
+    match (dff, txd) {
+        (Some(dff), txd) => Some(load_model(facade, dff, txd)),
+        _ => None,
+    }
+}
+
 fn main() {
     use std::ops::Deref;
     use std::io::Read;
@@ -66,20 +81,15 @@ fn main() {
     let x_res = 800.0f32;
     let y_res = 600.0f32;
 
-    let (dffname, txdname) = {
+    let (mut dffname, mut txdname) = {
         let mut args = std::env::args();
         match (args.next(), args.next(), args.next()) {
-            (Some(_), Some(dffname), Some(txdname)) => {
-                println!("Using clump '{}' with dictionary '{}'", dffname, txdname);
-                (dffname, txdname)
+            (Some(_), dffname, txdname) => {
+                (dffname.map(PathBuf::from), txdname.map(PathBuf::from))
             },
-            _ => {
-                println!("Usage: rwdraw <dffpath> <txdpath>");
-                return;
-            },
+            _ => (None, None),
         }
     };
-
 
     let display = glutin::WindowBuilder::new()
                             .with_title("rwdraw".into())
@@ -119,59 +129,87 @@ fn main() {
         far: 1000.0,
     });
 
-    let tex_blank = NativeTexture::new_blank_texture(&display);
+    let tex_blank = Rc::new(NativeTexture::new_blank_texture(&display));
+
+    let xzy_to_xyz = Matrix4::<f32>::from_cols(
+        Vector4::new(1.0, 0.0, 0.0, 0.0),
+        Vector4::new(0.0, 0.0, -1.0, 0.0),
+        Vector4::new(0.0, 1.0, 0.0, 0.0),
+        Vector4::new(0.0, 0.0, 0.0, 1.0),
+    );
 
     // cargo run -- "target/containercrane_04.dff" "target/cranes_dyn2_cj.txd"
-    let natgeo = load_model(&display, dffname, txdname);
+    let mut should_reload_model = true;
+    let mut natgeo = None;//try_load_model(&display, dffname, txdname);
 
     loop {
         last_frame_time = curr_frame_time;
         curr_frame_time = clock_ticks::precise_time_s();
         let delta_time  = (curr_frame_time - last_frame_time) as f32;
 
+        
         user.process(None);
         for event in display.poll_events() {
             user.process(Some(event.clone()));
             match event {
                 Event::Closed => return,
+                Event::DroppedFile(path) => {
+                    match path.extension().and_then(|os| os.to_str()).map(|s| s.to_lowercase()) {
+                        Some(ref ext) if ext == "txd" => {
+                            txdname = Some(path);
+                            should_reload_model = true;
+                        },
+                        Some(ref ext) if ext == "dff" => {
+                            dffname = Some(path);
+                            should_reload_model = true;
+                        },
+                        _ => (),
+                    }
+                },
                 _ => (),
             }
         }
 
-        let mut target = display.draw();
-        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
+        if should_reload_model {
+            natgeo = try_load_model(&display, dffname.clone(), txdname.clone());
+            should_reload_model = false;
+        }
 
-        let xzy_to_xyz = Matrix4::<f32>::from_cols(
-            Vector4::new(1.0, 0.0, 0.0, 0.0),
-            Vector4::new(0.0, 0.0, -1.0, 0.0),
-            Vector4::new(0.0, 1.0, 0.0, 0.0),
-            Vector4::new(0.0, 0.0, 0.0, 1.0),
-        );
+        let mut renderer = Renderer::new(display.draw(), tex_blank.clone());
+        renderer.target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
 
         let view = camera.process_view_matrix(&user, delta_time);
 
-        for &model in &[Matrix4::<f32>::identity()]
-        {
-            for mesh in natgeo.meshes.iter() {
-
-                use glium::draw_parameters::{DepthTest, BlendingFunction};
-                use glium::draw_parameters::LinearBlendingFactor::*;
-
-                let uniforms = uniform! {
-                    model_view_proj: proj * view * xzy_to_xyz * model,
-                    tex: mesh.texture.as_ref().map(|texture| &texture.tex).unwrap_or(&tex_blank),
-                };
-
-                let params = glium::DrawParameters {
-                    depth_test: DepthTest::IfLess,
-                    depth_write: true,
-                    blending_function: Some(BlendingFunction::Addition { source: SourceAlpha, destination: OneMinusSourceAlpha }),
-                    .. Default::default()
-                };
-                target.draw(&natgeo.vbo, natgeo.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
-            }
+        if let Some(ref natgeo) = natgeo {
+            let model = Matrix4::<f32>::identity();
+            natgeo.render(&mut renderer, &program, &proj, &(view * xzy_to_xyz * model));
         }
 
-        target.finish().unwrap();
+/*
+        if let Some(ref natgeo) = natgeo {
+            for &model in &[Matrix4::<f32>::identity()]
+            {
+                for mesh in natgeo.meshes.iter() {
+
+                    use glium::draw_parameters::{DepthTest, BlendingFunction};
+                    use glium::draw_parameters::LinearBlendingFactor::*;
+
+                    let uniforms = uniform! {
+                        model_view_proj: proj * view * xzy_to_xyz * model,
+                        tex: mesh.texture.as_ref().map(|texture| &texture.tex).unwrap_or(&tex_blank),
+                    };
+
+                    let params = glium::DrawParameters {
+                        depth_test: DepthTest::IfLess,
+                        depth_write: true,
+                        blending_function: Some(BlendingFunction::Addition { source: SourceAlpha, destination: OneMinusSourceAlpha }),
+                        .. Default::default()
+                    };
+                    target.draw(&natgeo.vbo, natgeo.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
+                }
+            }
+        }*/
+
+        renderer.into_surface().finish().unwrap();
     }
 }

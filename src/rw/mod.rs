@@ -24,7 +24,7 @@ pub use self::frame::{FrameList, Frame, FrameObjectValue, FrameObject, NodeNameP
 pub use self::atomic::Atomic;
 pub use self::geometry::{GeometryList, Geometry};
 pub use self::material::{MaterialList, Material, SurfaceProperties};
-pub use self::texture::{Texture, TexDictionary, TexNative, FilterMode, WrapMode, TextureData, TexLevel};
+pub use self::texture::{Texture, SimpleTexture, TexDictionary, TexNative, FilterMode, WrapMode, TextureData, TexLevel};
 pub use self::light::Light;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -35,6 +35,7 @@ pub enum Error {
     ExpectedSection { expect: u32, found: u32 },
     MissingSection(u32),
     IoError(byteorder::Error),
+    TextureNotFound(String),
     Other(String), // TODO Find all calls to this (ok_or) and optimize to be lazy to avoid alloc
 }
 
@@ -154,12 +155,35 @@ impl SectionBuf {
 
 pub struct Instance {
     curr_dict: Option<Rc<TexDictionary>>,   // binded dictionary
+    //dictionary: Rc<TexDictionary>,          // default dictionary
+    //tex_blank: Rc<Texture>,                 // default texture (stored at default dictionary)
 }
 
 impl Instance {
     pub fn new() -> Instance {
+
+/*
+        dictionary = {
+            let tex_blank = SimpleTexture {
+                name: "__RwBlank__",
+                mask: "",
+                filter: FilterMode::None,
+                wrap_x: WrapMode::None,
+                wrap_y: WrapMode::None,
+                raster: Raster::with_base(TexLevel {
+                    width: 16,
+                    height: 16,
+                    data: TextureData::Rgb8(repeat((255u8, 255, 255)).take(16*16).collect()),
+                }),
+            };
+
+            TexDictionary::new("__RenderWare__", [tex_blank].into_iter())
+        };
+*/
         Instance {
             curr_dict: None,
+            //tex_blank: dictionary.read_texture("__RwBlank__", None).unwrap(),
+            //dictionary: dictionary,
         }
     }
 

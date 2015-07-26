@@ -99,7 +99,11 @@ impl Material {
 
         // Associated texture...
         let texture = if has_tex {
-            Some(try!(Texture::read(rws)))
+            match Texture::read(rws) {
+                Ok(tex) => Some(tex),
+                Err(Error::TextureNotFound(_)) => None,
+                Err(err) => return Err(err),
+            }
         } else {
             None
         };

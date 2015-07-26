@@ -62,24 +62,23 @@ impl NativeTexture {
         use glium::texture::{CompressedSrgbTexture2d, CompressedSrgbFormat, CompressedMipmapsOption};
         use glium::Rect;
 
-        assert!(rwtex.mips.len() > 0);
-
-        let format = match rwtex.mips[0] {
-            TexLevel { data: TextureData::Dxt1c(_), .. } => CompressedSrgbFormat::S3tcDxt1NoAlpha,
-            TexLevel { data: TextureData::Dxt1a(_), .. } => CompressedSrgbFormat::S3tcDxt1Alpha,
-            TexLevel { data: TextureData::Dxt3(_), .. } => CompressedSrgbFormat::S3tcDxt3Alpha,
+        let format = match rwtex.raster.base() {
+            &TexLevel { data: TextureData::Dxt1c(_), .. } => CompressedSrgbFormat::S3tcDxt1NoAlpha,
+            &TexLevel { data: TextureData::Dxt1a(_), .. } => CompressedSrgbFormat::S3tcDxt1Alpha,
+            &TexLevel { data: TextureData::Dxt3(_), .. } => CompressedSrgbFormat::S3tcDxt3Alpha,
             _ => unimplemented!(),
         };
 
-        let mips_gen = CompressedMipmapsOption::EmptyMipmapsMax(rwtex.mips.len() as u32 - 1);
+        let mips_gen = CompressedMipmapsOption::EmptyMipmapsMax(rwtex.raster.num_mipmaps());
 
 
-        let tex = CompressedSrgbTexture2d::empty_with_format(facade,
-                                                             format,
-                                                             mips_gen,
-                                                             rwtex.width as u32, rwtex.height as u32).unwrap();//<<<<<<<<<
+        let tex = {
+            let (width, height) = (rwtex.raster.width() as u32, rwtex.raster.height() as u32);
+            CompressedSrgbTexture2d::empty_with_format(facade, format,
+                                                       mips_gen, width, height).unwrap()//<<<<<<<<<
+        };
 
-        for (level, rwmip) in rwtex.mips.iter().enumerate() {
+        for (level, rwmip) in rwtex.raster.mips.iter().enumerate() {
             let level = level as u32;
             match *rwmip {
                 TexLevel { data: TextureData::Dxt1c(ref data), width, height } |
@@ -99,13 +98,18 @@ impl NativeTexture {
     }
 
     // TODO at one point return a NativeTexture
-    pub fn new_blank_texture<F: Facade>(facade: &F) -> CompressedSrgbTexture2d {
+    pub fn new_blank_texture<F: Facade>(facade: &F) -> NativeTexture {
         use std::iter::repeat;
-        CompressedSrgbTexture2d::new(facade, RawImage2d {
+        
+        let texture = CompressedSrgbTexture2d::new(facade, RawImage2d {
             width: 16,
             height: 16,
             format: ClientFormat::U8U8U8,
             data: repeat((255u8, 255, 255)).take(16*16).collect(),
-        }).unwrap() // MUST succeed
+        }).unwrap(); // MUST succeed
+
+        NativeTexture {
+            tex: texture,
+        }
     }
 }

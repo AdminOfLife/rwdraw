@@ -95,6 +95,7 @@ pub enum TextureData {
     Dxt1c(Vec<u8>),
     Dxt3(Vec<u8>),
     Dxt5(Vec<u8>),
+    Rgb8(Vec<(u8, u8, u8)>),
 }
 
 #[derive(Debug)]
@@ -105,13 +106,29 @@ pub struct TexLevel {
 }
 
 #[derive(Debug)]
+pub struct Raster {
+    pub mips: Vec<TexLevel>,
+    //pub width: u16,     // mips[0].width
+    //pub height: u16,    // mips[0].height
+}
+
+// TODO PRIVATIZE
+#[derive(Debug)]
 pub struct Texture {
     pub dict: Rc<String>,
-    pub name: Rc<String>,
-    pub mask: Rc<String>,
-    pub mips: Vec<TexLevel>,
-    pub width: u16,     // mips[0].width
-    pub height: u16,    // mips[0].height
+    pub name: Rc<String>,   // TODO...
+    pub mask: Rc<String>,   // ... why is this a Rc?
+    pub raster: Raster,
+    pub filter: FilterMode,
+    pub wrap_x: WrapMode,
+    pub wrap_y: WrapMode,
+}
+
+#[derive(Debug)]
+pub struct SimpleTexture {
+    pub name: String,
+    pub mask: String,
+    pub raster: Raster,
     pub filter: FilterMode,
     pub wrap_x: WrapMode,
     pub wrap_y: WrapMode,
@@ -138,7 +155,49 @@ impl Section for TexNative {
     fn section_id() -> u32 { 0x0015 }
 }
 
+impl Raster {
+    /// `mips` **shall not** be empty
+    pub fn new(mips: Vec<TexLevel>) -> Raster {
+        assert!(!mips.is_empty());
+        Raster {
+            mips: mips,
+        }
+    }
+
+    pub fn with_base(base: TexLevel) -> Raster {
+        Raster::new(vec![base])
+    }
+
+    pub fn width(&self) -> u16 {
+        self.mips[0].width
+    }
+
+    pub fn height(&self) -> u16 {
+        self.mips[0].height
+    }
+
+    pub fn base(&self) -> &TexLevel {
+        &self.mips[0]
+    }
+
+    pub fn num_mipmaps(&self) -> u32 {
+        (self.mips.len() - 1) as u32
+    }
+}
+
 impl Texture {
+    pub fn from_simple(dict_name: Rc<String>, tex: SimpleTexture) -> Rc<Texture> {
+        Rc::new(Texture {
+            dict: dict_name,
+            name: Rc::new(tex.name),
+            mask: Rc::new(tex.mask),
+            raster: tex.raster,
+            filter: tex.filter,
+            wrap_x: tex.wrap_x,
+            wrap_y: tex.wrap_y,
+        })
+    }
+
     pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<Rc<Texture>> {
         let _header = try!(Self::read_header(rws));
 
@@ -152,11 +211,32 @@ impl Texture {
         try!(Extension::skip_section(rws));
 
         rws.rw.read_texture(&name, Some(&mask))
-              .ok_or(Error::Other("TODO NO TEX".into()))
+              .ok_or_else(|| Error::TextureNotFound(name))
     }
 }
 
 impl TexDictionary {
+
+    pub fn new_empty<S: Into<String>>(name: S) -> Rc<TexDictionary> {
+        Rc::new(TexDictionary {
+            name: Rc::new(name.into()),
+            textures: HashMap::new(),
+        })
+    }
+
+    pub fn new<S: Into<String>, I: Iterator<Item=SimpleTexture>>(name: S, texgen_iter: I) -> Rc<TexDictionary> {
+        let mut textures = HashMap::with_capacity(texgen_iter.size_hint().0);
+        let mut dict_name = Rc::new(name.into());
+        for simple_tex in texgen_iter {
+            let tex = Texture::from_simple(dict_name.clone(), simple_tex);
+            textures.insert((*tex.name).clone(), tex);
+        }
+        //textures.shrink_to_fit();
+        Rc::new(TexDictionary {
+            name: dict_name,
+            textures: textures,
+        })
+    }
 
     pub fn read_texture(&self, name: &str, mask: Option<&str>) -> Option<Rc<Texture>> {
         self.textures.get(name).map(|rctex| rctex.clone())
@@ -164,8 +244,6 @@ impl TexDictionary {
 
     pub fn read<R: ReadExt, S: Into<String>>(rws: &mut Stream<R>, dict_name: S) -> Result<Rc<TexDictionary>> {
         let header = try!(Self::read_header(rws));
-
-        let dict_name = Rc::new(dict_name.into());
 
         let num_textures = {
             if header.version < 0x1803FFFF { // lesser than 3.6.0.0
@@ -180,23 +258,18 @@ impl TexDictionary {
             }
         };
 
-        let mut textures = HashMap::with_capacity(num_textures as usize);
-        for _ in (0..num_textures) {
-            let (name, _mask, texture) = try!(TexNative::read(rws, &dict_name));
-            textures.insert((*name).clone(), Rc::new(texture));
-        }
+
+        let textures: Vec<_> = try!((0..num_textures).map(|_| TexNative::read(rws))
+                                             .collect());
 
         try!(Extension::skip_section(rws));
 
-        Ok(Rc::new(TexDictionary {
-            name: dict_name,
-            textures: textures,
-        }))
+        Ok(TexDictionary::new(dict_name, textures.into_iter()))
     }
 }
 
 impl TexNative {
-    pub fn read<R: ReadExt>(rws: &mut Stream<R>, dict_name: &Rc<String>) -> Result<(Rc<String>, Rc<String>, Texture)> {
+    pub fn read<R: ReadExt>(rws: &mut Stream<R>) -> Result<SimpleTexture> {
         let header = try!(Self::read_header(rws));
 
         let platform_id = try!(Struct::peek_up(rws, |rws| Ok(try!(rws.read_u32::<LittleEndian>()))));
@@ -205,8 +278,8 @@ impl TexNative {
             2 => unimplemented!(),                              // OpenGL
             4 | 0x00325350 => unimplemented!(),                 // PS2 ("PS2/0")
             5 => unimplemented!(),                              // Xbox
-            8 => Struct::read_up(rws, |rws| Self::read_struct_d3dx(rws, dict_name)),  // D3D8
-            9 => Struct::read_up(rws, |rws| Self::read_struct_d3dx(rws, dict_name)),  // D3D9
+            8 => Struct::read_up(rws, |rws| Self::read_struct_d3dx(rws)),  // D3D8
+            9 => Struct::read_up(rws, |rws| Self::read_struct_d3dx(rws)),  // D3D9
             _ => Err(Error::Other(format!("Unknown texture dictionary platform id {}", platform_id))),
         });
 
@@ -215,7 +288,7 @@ impl TexNative {
         Ok(result)
     }
 
-    fn read_struct_d3dx<R: ReadExt>(rws: &mut Stream<R>, dict_name: &Rc<String>) -> Result<(Rc<String>, Rc<String>, Texture)> {
+    fn read_struct_d3dx<R: ReadExt>(rws: &mut Stream<R>) -> Result<SimpleTexture> {
         // TODO TXDs are confusing, review this later
 
         let platform_id = try!(rws.read_u32::<LittleEndian>());
@@ -300,21 +373,13 @@ impl TexNative {
             }
         };
 
-        let name = Rc::new(name);
-        let mask = Rc::new(mask);
-
-        let texture = Texture {
-            dict: dict_name.clone(),
-            name: name.clone(),
-            mask: mask.clone(),
-            mips: mips,
-            width: width,
-            height: height,
+        Ok(SimpleTexture {
+            name: name,
+            mask: mask,
+            raster: Raster::new(mips),
             filter: filter,
             wrap_x: wrap_x,
             wrap_y: wrap_y,
-        };
-
-        Ok((name, mask, texture))
+        })
     }
 }

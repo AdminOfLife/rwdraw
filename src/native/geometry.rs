@@ -6,12 +6,13 @@ use super::{NativeDictionary, NativeDictionaryList, NativeTexture};
 
 use rw;
 use std::ops::Range;
-use glium;
+use glium::{self, Surface};
 use glium::vertex::{VertexBuffer};
 use glium::index::{IndexBuffer, PrimitiveType};
 use glium::backend::Facade;
+use super::Renderer;
 
-use cgmath::{Point3, Vector2, Vector4};
+use cgmath::{Point3, Vector2, Vector4, Matrix4};
 
 #[derive(Debug, Copy, Clone)]
 pub struct VertexPrelit {
@@ -50,6 +51,31 @@ pub struct NativeGeometry {
 }
 
 impl NativeGeometry {
+
+    pub fn render<S: Surface>(&self, renderer: &mut Renderer<S>, program: &glium::Program,
+                              proj: &Matrix4<f32>, model_view: &Matrix4<f32>) 
+    {
+        use glium::draw_parameters::{DepthTest, BlendingFunction};
+        use glium::draw_parameters::LinearBlendingFactor::*;
+
+        for mesh in self.meshes.iter() {
+            let uniforms = uniform! {
+                model_view_proj: (*proj) * (*model_view),
+                tex: &mesh.texture.as_ref().unwrap_or(&renderer.tex_blank).tex,
+            };
+
+            // TODO blending only when necessary
+            let params = glium::DrawParameters {
+                depth_test: DepthTest::IfLess,
+                depth_write: true,
+                blending_function: Some(BlendingFunction::Addition { source: SourceAlpha, destination: OneMinusSourceAlpha }),
+                .. Default::default()
+            };
+
+            renderer.target.draw(&self.vbo, self.ibo.slice(mesh.range.clone()).unwrap(),
+                                 &program, &uniforms, &params).unwrap();
+        }
+    }
 
     pub fn from_rw<F: Facade>(facade: &F, rwgeo: &rw::Geometry,
                               dicts: &NativeDictionaryList) -> Option<NativeGeometry> {
