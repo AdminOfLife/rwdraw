@@ -34,7 +34,7 @@ use glium::backend::Facade;
 use glium::glutin::{self, Event};
 use cgmath::{Deg, PerspectiveFov, Matrix4, Vector3, Vector4};
 
-pub fn load_model<F, P1, P2>(facade: &F, dff: P1, txd: Option<P2>) -> NativeGeometry
+pub fn load_atomic<F, P1, P2>(facade: &F, dff: P1, txd: Option<P2>) -> NativeGeometry
                              where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
     let mut rw = rw::Instance::new();
 
@@ -66,10 +66,50 @@ pub fn load_model<F, P1, P2>(facade: &F, dff: P1, txd: Option<P2>) -> NativeGeom
     NativeGeometry::from_rw(facade, &atomic.geometry, &dicts).unwrap()
 }
 
-pub fn try_load_model<F, P1, P2>(facade: &F, dff: Option<P1>, txd: Option<P2>) -> Option<NativeGeometry>
+pub fn try_load_atomic<F, P1, P2>(facade: &F, dff: Option<P1>, txd: Option<P2>) -> Option<NativeGeometry>
                              where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
     match (dff, txd) {
-        (Some(dff), txd) => Some(load_model(facade, dff, txd)),
+        (Some(dff), txd) => Some(load_atomic(facade, dff, txd)),
+        _ => None,
+    }
+}
+
+pub fn load_clump<F, P1, P2>(facade: &F, dff: P1, txd: Option<P2>) -> native::Clump
+                             where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
+    let mut rw = rw::Instance::new();
+
+    //println!("Using clump '{}' with dictionary '{}'", dff, txd);
+
+    println!("Loading texture dictionary...");
+    let dictionary = match txd {
+        Some(txd) => {
+            let txd = txd.as_ref();
+            let txdname = txd.file_stem().unwrap().to_string_lossy().into_owned();
+            let f = BufReader::new(File::open(&txd).unwrap());
+            rw::TexDictionary::read(&mut rw::Stream::new(f, &mut rw), txdname).unwrap()
+        },
+        None => rw::TexDictionary::new_empty("noname"),
+    };
+
+    let mut dicts = NativeDictionaryList::new();
+    dicts.add_rwdict(facade, &dictionary);
+
+    println!("Loading clump...");
+    let clump = {
+        let dff = dff.as_ref();
+        rw.bind_dictionary(&dictionary);
+        let f = BufReader::new(File::open(dff).unwrap());
+        let clump = rw::Clump::read(&mut rw::Stream::new(f, &mut rw)).unwrap();
+        native::Clump::from_rw(facade, &clump, &dicts)
+    };
+
+    clump.unwrap()
+}
+
+pub fn try_load_clump<F, P1, P2>(facade: &F, dff: Option<P1>, txd: Option<P2>) -> Option<native::Clump>
+                             where F: Facade, P1: AsRef<Path>, P2: AsRef<Path> {
+    match (dff, txd) {
+        (Some(dff), txd) => Some(load_clump(facade, dff, txd)),
         _ => None,
     }
 }
@@ -140,7 +180,8 @@ fn main() {
 
     // cargo run -- "target/containercrane_04.dff" "target/cranes_dyn2_cj.txd"
     let mut should_reload_model = true;
-    let mut natgeo = None;//try_load_model(&display, dffname, txdname);
+    //let mut natgeo = None;//try_load_model(&display, dffname, txdname);
+    let mut clump = None;
 
     loop {
         last_frame_time = curr_frame_time;
@@ -171,7 +212,8 @@ fn main() {
         }
 
         if should_reload_model {
-            natgeo = try_load_model(&display, dffname.clone(), txdname.clone());
+            //natgeo = try_load_model(&display, dffname.clone(), txdname.clone());
+            clump = try_load_clump(&display, dffname.clone(), txdname.clone());
             should_reload_model = false;
         }
 
@@ -180,35 +222,10 @@ fn main() {
 
         let view = camera.process_view_matrix(&user, delta_time);
 
-        if let Some(ref natgeo) = natgeo {
+        if let Some(ref clump) = clump {
             let model = Matrix4::<f32>::identity();
-            natgeo.render(&mut renderer, &program, &proj, &(view * xzy_to_xyz * model));
+            clump.render(&mut renderer, &program, &proj, &(view * xzy_to_xyz * model));
         }
-
-/*
-        if let Some(ref natgeo) = natgeo {
-            for &model in &[Matrix4::<f32>::identity()]
-            {
-                for mesh in natgeo.meshes.iter() {
-
-                    use glium::draw_parameters::{DepthTest, BlendingFunction};
-                    use glium::draw_parameters::LinearBlendingFactor::*;
-
-                    let uniforms = uniform! {
-                        model_view_proj: proj * view * xzy_to_xyz * model,
-                        tex: mesh.texture.as_ref().map(|texture| &texture.tex).unwrap_or(&tex_blank),
-                    };
-
-                    let params = glium::DrawParameters {
-                        depth_test: DepthTest::IfLess,
-                        depth_write: true,
-                        blending_function: Some(BlendingFunction::Addition { source: SourceAlpha, destination: OneMinusSourceAlpha }),
-                        .. Default::default()
-                    };
-                    target.draw(&natgeo.vbo, natgeo.ibo.slice(mesh.range.clone()).unwrap(), &program, &uniforms, &params).unwrap();
-                }
-            }
-        }*/
 
         renderer.into_surface().finish().unwrap();
     }

@@ -92,6 +92,25 @@ impl Clump {
     /// It's recommend to detach the returned atomic from any frame using `Atomic::detach` on the
     /// returned atomic but not required.
     pub fn into_atomic(mut self) -> Option<Rc<Atomic>> {
-        self.atomics.pop()
+        let x = self.atomics.pop();
+        match x {
+            Some(ref atomic) => {
+                match atomic.frame() {
+                    Some(frame) => {
+                        println!("->{:?}", frame.name());
+                    },
+                    _ => {},
+                }
+            }
+            _ => {},
+        }
+
+        //self.atomics.pop()
+        x
+    }
+
+    /// Gets the root frame in the atomic list / frame list.
+    pub fn atomic_root(&self) -> Option<Rc<Frame>> {
+        self.frames.root()
     }
 }

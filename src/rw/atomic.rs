@@ -64,6 +64,14 @@ impl Atomic {
         atomic
     }
 
+    /// Gets the frame attached to this Atomic.
+    pub fn frame(&self) -> Option<Rc<Frame>> {
+        match *self.parent.borrow() {
+            Some(ref weak) => weak.upgrade(),
+            None => None,
+        }
+    }
+
     /// Reads the `Atomic` off the RenderWare Stream.
     ///
     /// The previosly read geometry and frames from the same clump object in the stream must

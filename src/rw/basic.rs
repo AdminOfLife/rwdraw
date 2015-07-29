@@ -158,3 +158,16 @@ impl From<Vec3> for cgmath::Vector3<f32> {
         cgmath::Vector3::new(v.0, v.1, v.2)
     }
 }
+
+//#[cfg(feature="cgmath")]
+impl From<Matrix> for cgmath::Matrix4<f32> {
+    fn from(m: Matrix) -> cgmath::Matrix4<f32> {
+        cgmath::Matrix4::new(
+            m.right.0,  m.right.1,  m.right.2,  0.0f32,
+            m.top.0,    m.top.1,    m.top.2,    0.0f32,
+            m.at.0,     m.at.1,     m.at.2,     0.0f32,
+            m.pos.0,    m.pos.1,    m.pos.2,    1.0f32,
+        )
+    }
+}
+

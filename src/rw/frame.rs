@@ -125,6 +125,28 @@ impl FrameObject for Rc<Frame> {
 
 impl Frame {
 
+    /// Gets the name of this frame object.
+    ///
+    // TODO, better way, allocating the String everytime? meh
+    pub fn name(&self) -> String {
+        self.name.borrow().clone()
+    }
+
+    /// TODO
+    pub fn matrix(&self) -> Matrix {
+        self.matrix
+    }
+
+    /// TODO
+    pub fn childs(&self) -> Ref<Vec<FrameObjectValue>> {
+        self.childs.borrow()
+    }
+
+    /// TODO
+    pub fn num_childs(&self) -> usize {
+        self.childs().len()
+    }
+
     /// Adds a child object into the specified `Frame`.
     ///
     /// This is a helper to `FrameObject`.
@@ -140,6 +162,15 @@ impl Frame {
         if let Some(pos) = childs.iter().position(|obj| obj.is_same_object(&child)) {
             childs.remove(pos);
         }
+    }
+
+    /// Finds the root of the hierarchy, or if this is the root, returns itself.
+    pub fn root(myself: &Rc<Frame>) -> Rc<Frame> {
+        let root = match *myself.parent.borrow() {
+            Some(ref weak) => weak.upgrade().map(|rcframe| Frame::root(&rcframe)),
+            None => None,
+        };
+        root.unwrap_or_else(|| myself.clone())
     }
 
     /// Reads a Frame object off the RenderWare Stream.
@@ -168,6 +199,11 @@ impl FrameList {
     /// Gets the frame at the specified index or `None` if out of range.
     pub fn get(&self, index: usize) -> Option<Rc<Frame>> {
         self.0.get(index).map(|rcframe| rcframe.clone())
+    }
+
+    /// Gets the root frame in the list.
+    pub fn root(&self) -> Option<Rc<Frame>> {
+        self.get(0).map(|rcframe| Frame::root(&rcframe))
     }
 
     /// Reads the Frame List off the RenderWare Stream.

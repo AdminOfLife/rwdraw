@@ -21,17 +21,26 @@ pub struct VertexPrelit {
     uv0: Vector2<f32>,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct VertexLit {
+    pos: Point3<f32>,
+    uv0: Vector2<f32>,
+}
+
 implement_vertex!(VertexPrelit, pos, color, uv0);
+implement_vertex!(VertexLit, pos, uv0);
 
 #[derive(Debug)]
 pub enum NativeVertexBuffer {
     Prelit(VertexBuffer<VertexPrelit>),
+    Lit(VertexBuffer<VertexLit>),
 }
 
 impl<'a> glium::vertex::IntoVerticesSource<'a> for &'a NativeVertexBuffer {
     fn into_vertices_source(self) -> glium::vertex::VerticesSource<'a> {
         use self::NativeVertexBuffer::*;
         match *self {
+            Lit(ref vbo) => vbo.into_vertices_source(),
             Prelit(ref vbo) => vbo.into_vertices_source(),
         }
     }
@@ -108,7 +117,7 @@ impl NativeGeometry {
             RwData { verts: Some(verts), normals: _, colors: Some(colors), uv0: Some(uv0) } => {
 
                 // Maybe make this a pattern guard?
-                if verts.len() != colors.len() || colors.len() != uv0.len() {
+                if verts.len() != uv0.len() || uv0.len() != colors.len() {
                     return None;
                 }
 
@@ -127,6 +136,32 @@ impl NativeGeometry {
                     Err(_) => return None,
                 }
             },
+
+            // In case it's not prelit...
+            // TODO what to actually do about this (NativeVertexBuffer::Prelit etc)
+            RwData { verts: Some(verts), normals: _, colors: None, uv0: Some(uv0) } => {
+
+                // Maybe make this a pattern guard?
+                if verts.len() != uv0.len() {
+                    return None;
+                }
+
+                let maybe_buffer = VertexBuffer::new(facade,
+                    izip!(verts.iter(), uv0.iter()).map(|(vert, uv0)| {
+                        VertexPrelit {
+                            pos: (*vert).into(),
+                            color: Vector4::new(1.0f32, 1.0, 1.0, 1.0),
+                            uv0: (*uv0).into(),
+                        }
+                    }).collect::<Vec<_>>().as_ref()
+                );
+
+                match maybe_buffer {
+                    Ok(vbo) => NativeVertexBuffer::Prelit(vbo),
+                    Err(_) => return None,
+                }
+            },
+
             // Not sure what we're dealing with:
             _ => return None,
         };
