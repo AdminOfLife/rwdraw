@@ -242,6 +242,7 @@ impl<'a, R: ReadExt> io::Seek for Stream<'a, R> {
 }
 
 pub trait ReadExt : Seek + byteorder::ReadBytesExt {
+    // TODO common function read_bytes
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>> {
         unsafe {
             let mut v = Vec::with_capacity(size);
@@ -250,6 +251,7 @@ pub trait ReadExt : Seek + byteorder::ReadBytesExt {
         }
     }
 
+    // TODO common function read_full
     fn read_full(&mut self, buf: &mut [u8]) -> byteorder::Result<()> {
         use byteorder::*;
         use std::io;
